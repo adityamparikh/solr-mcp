@@ -143,6 +143,33 @@ The Docker images are built with multi-platform support for:
 - `linux/amd64` (Intel/AMD 64-bit)
 - `linux/arm64` (Apple Silicon M1/M2/M3)
 
+#### Automated Builds with GitHub Actions
+
+This project includes a GitHub Actions workflow that automatically builds and publishes Docker images to both GitHub
+Container Registry and Docker Hub.
+
+**Triggers:**
+
+- Push to `main` branch - Builds and publishes images tagged with `version-SHA` and `latest`
+- Version tags (e.g., `v1.0.0`) - Builds and publishes images tagged with the version number and `latest`
+- Pull requests - Builds and tests only (no publishing)
+
+**Published Images:**
+
+- GitHub Container Registry: `ghcr.io/OWNER/solr-mcp-server:TAG`
+- Docker Hub: `DOCKERHUB_USERNAME/solr-mcp-server:TAG`
+
+**Setup for Docker Hub Publishing:**
+
+To enable Docker Hub publishing, configure these repository secrets:
+
+1. Go to your GitHub repository Settings > Secrets and variables > Actions
+2. Add the following secrets:
+    - `DOCKERHUB_USERNAME`: Your Docker Hub username
+    - `DOCKERHUB_TOKEN`: Docker Hub access token (create at https://hub.docker.com/settings/security)
+
+**Note:** GitHub Container Registry publishing works automatically using the `GITHUB_TOKEN` provided by GitHub Actions.
+
 #### Running the Docker Container
 
 Run the container with STDIO mode:
