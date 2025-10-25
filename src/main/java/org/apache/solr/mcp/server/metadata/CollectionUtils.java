@@ -92,7 +92,7 @@ public class CollectionUtils {
      * </ul>
      *
      * @param response the NamedList containing the data to extract from
-     * @param key      the key to look up in the NamedList
+     * @param key the key to look up in the NamedList
      * @return the Long value if found and convertible, null otherwise
      * @see Number#longValue()
      * @see Long#parseLong(String)
@@ -107,7 +107,7 @@ public class CollectionUtils {
 
         try {
             return Long.parseLong(value.toString());
-        } catch (NumberFormatException _) {
+        } catch (NumberFormatException ex) {
             return null;
         }
     }
@@ -147,7 +147,7 @@ public class CollectionUtils {
      * averages.
      *
      * @param stats the NamedList containing the metric data to extract from
-     * @param key   the key to look up in the NamedList
+     * @param key the key to look up in the NamedList
      * @return the Float value if found, or 0.0f if the key doesn't exist or value is null
      * @see Number#floatValue()
      */
@@ -197,7 +197,7 @@ public class CollectionUtils {
      * String)} instead to avoid truncation or overflow issues.
      *
      * @param response the NamedList containing the data to extract from
-     * @param key      the key to look up in the NamedList
+     * @param key the key to look up in the NamedList
      * @return the Integer value if found and convertible, null otherwise
      * @see Number#intValue()
      * @see Integer#parseInt(String)
@@ -213,7 +213,7 @@ public class CollectionUtils {
 
         try {
             return Integer.parseInt(value.toString());
-        } catch (NumberFormatException _) {
+        } catch (NumberFormatException ex) {
             return null;
         }
     }

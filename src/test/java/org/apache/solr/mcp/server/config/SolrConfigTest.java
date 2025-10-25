@@ -99,7 +99,7 @@ class SolrConfigTest {
         // Clean up
         try {
             client.close();
-        } catch (Exception _) {
+        } catch (Exception ex) {
             // Ignore close errors in test
         }
     }
@@ -119,7 +119,7 @@ class SolrConfigTest {
 
         try {
             client.close();
-        } catch (Exception _) {
+        } catch (Exception ex) {
             // Ignore close errors in test
         }
     }
@@ -139,7 +139,7 @@ class SolrConfigTest {
 
         try {
             client.close();
-        } catch (Exception _) {
+        } catch (Exception ex) {
             // Ignore close errors in test
         }
     }
@@ -159,7 +159,7 @@ class SolrConfigTest {
 
         try {
             client.close();
-        } catch (Exception _) {
+        } catch (Exception ex) {
             // Ignore close errors in test
         }
     }
@@ -179,7 +179,7 @@ class SolrConfigTest {
 
         try {
             client.close();
-        } catch (Exception _) {
+        } catch (Exception ex) {
             // Ignore close errors in test
         }
     }

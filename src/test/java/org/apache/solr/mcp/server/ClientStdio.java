@@ -47,10 +47,7 @@ public class ClientStdio {
                         buildInfo.getProperty("build.artifact"),
                         buildInfo.getProperty("build.version"));
 
-        var stdioParams = ServerParameters
-                .builder("java")
-                .args("-jar", jarName)
-                .build();
+        var stdioParams = ServerParameters.builder("java").args("-jar", jarName).build();
 
         var transport =
                 new StdioClientTransport(stdioParams, new JacksonMcpJsonMapper(new ObjectMapper()));
