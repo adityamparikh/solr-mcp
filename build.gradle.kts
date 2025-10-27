@@ -199,7 +199,9 @@ jib {
                 "org.opencontainers.image.description" to "Spring AI MCP Server for Apache Solr",
                 "org.opencontainers.image.version" to version.toString(),
                 "org.opencontainers.image.vendor" to "Apache Software Foundation",
-                "org.opencontainers.image.licenses" to "Apache-2.0"
+                "org.opencontainers.image.licenses" to "Apache-2.0",
+                // MCP Registry annotation for server discovery
+                "io.modelcontextprotocol.server.name" to "io.github.apache/solr-mcp"
             )
         )
     }
