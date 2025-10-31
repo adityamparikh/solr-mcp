@@ -21,6 +21,7 @@ jetty = "10.0.22"
 
 # Test dependencies
 testcontainers = "1.21.3"
+awaitility = "4.2.2"
 
 [libraries]
 # Spring
@@ -52,6 +53,7 @@ nullaway = { module = "com.uber.nullaway:nullaway", version.ref = "nullaway" }
 testcontainers-junit-jupiter = { module = "org.testcontainers:junit-jupiter" }
 testcontainers-solr = { module = "org.testcontainers:solr", version.ref = "testcontainers" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+awaitility = { module = "org.awaitility:awaitility", version.ref = "awaitility" }
 
 [bundles]
 spring-ai-mcp = [
@@ -70,7 +72,8 @@ test = [
     "spring-ai-spring-boot-testcontainers",
     "testcontainers-junit-jupiter",
     "testcontainers-solr",
-    "spring-ai-starter-mcp-client"
+    "spring-ai-starter-mcp-client",
+    "awaitility"
 ]
 
 errorprone = [
