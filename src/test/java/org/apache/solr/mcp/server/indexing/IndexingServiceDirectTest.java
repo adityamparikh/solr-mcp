@@ -19,7 +19,11 @@ package org.apache.solr.mcp.server.indexing;
 import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.response.UpdateResponse;
 import org.apache.solr.common.SolrInputDocument;
-import org.apache.solr.mcp.server.indexing.documentcreator.*;
+import org.apache.solr.mcp.server.indexing.documentcreator.CsvDocumentCreator;
+import org.apache.solr.mcp.server.indexing.documentcreator.DocumentProcessingException;
+import org.apache.solr.mcp.server.indexing.documentcreator.IndexingDocumentCreator;
+import org.apache.solr.mcp.server.indexing.documentcreator.JsonDocumentCreator;
+import org.apache.solr.mcp.server.indexing.documentcreator.XmlDocumentCreator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -29,9 +33,20 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class IndexingServiceDirectTest {
@@ -44,11 +59,14 @@ class IndexingServiceDirectTest {
 
     private IndexingService indexingService;
     private IndexingDocumentCreator indexingDocumentCreator;
+
     @BeforeEach
     void setUp() {
-        indexingDocumentCreator = new IndexingDocumentCreator(new XmlDocumentCreator(),
-                new CsvDocumentCreator(),
-                new JsonDocumentCreator());
+        indexingDocumentCreator =
+                new IndexingDocumentCreator(
+                        new XmlDocumentCreator(),
+                        new CsvDocumentCreator(),
+                        new JsonDocumentCreator());
         indexingService = new IndexingService(solrClient, indexingDocumentCreator);
     }
 
@@ -68,8 +86,7 @@ class IndexingServiceDirectTest {
                 .thenThrow(new RuntimeException("Batch indexing failed"));
 
         // Individual document adds should succeed
-        when(solrClient.add(anyString(), any(SolrInputDocument.class)))
-                .thenReturn(updateResponse);
+        when(solrClient.add(anyString(), any(SolrInputDocument.class))).thenReturn(updateResponse);
 
         // Call the method under test
         int successCount = indexingService.indexDocuments("test_collection", documents);
@@ -132,7 +149,8 @@ class IndexingServiceDirectTest {
     @Test
     void testIndexJsonDocumentsWithJsonString() throws Exception {
         // Test JSON string with multiple documents
-        String json = """
+        String json =
+                """
                 [
                   {
                     "id": "test001",
@@ -149,7 +167,8 @@ class IndexingServiceDirectTest {
 
         // Create a spy on the indexingDocumentCreator and inject it into a new IndexingService
         IndexingDocumentCreator indexingDocumentCreatorSpy = spy(indexingDocumentCreator);
-        IndexingService indexingServiceWithSpy = new IndexingService(solrClient, indexingDocumentCreatorSpy);
+        IndexingService indexingServiceWithSpy =
+                new IndexingService(solrClient, indexingDocumentCreatorSpy);
         IndexingService indexingServiceSpy = spy(indexingServiceWithSpy);
 
         // Create mock documents that would be returned by createSchemalessDocuments
@@ -168,7 +187,9 @@ class IndexingServiceDirectTest {
         mockDocuments.add(doc2);
 
         // Mock the createSchemalessDocuments method to return our mock documents
-        doReturn(mockDocuments).when(indexingDocumentCreatorSpy).createSchemalessDocumentsFromJson(json);
+        doReturn(mockDocuments)
+                .when(indexingDocumentCreatorSpy)
+                .createSchemalessDocumentsFromJson(json);
 
         // Mock the indexDocuments method that takes a collection and list of documents
         doReturn(2).when(indexingServiceSpy).indexDocuments(anyString(), anyList());
@@ -190,16 +211,22 @@ class IndexingServiceDirectTest {
 
         // Create a spy on the indexingDocumentCreator and inject it into a new IndexingService
         IndexingDocumentCreator indexingDocumentCreatorSpy = spy(indexingDocumentCreator);
-        IndexingService indexingServiceWithSpy = new IndexingService(solrClient, indexingDocumentCreatorSpy);
+        IndexingService indexingServiceWithSpy =
+                new IndexingService(solrClient, indexingDocumentCreatorSpy);
         IndexingService indexingServiceSpy = spy(indexingServiceWithSpy);
 
         // Mock the createSchemalessDocuments method to throw an exception
-        doThrow(new DocumentProcessingException("Invalid JSON")).when(indexingDocumentCreatorSpy).createSchemalessDocumentsFromJson(invalidJson);
+        doThrow(new DocumentProcessingException("Invalid JSON"))
+                .when(indexingDocumentCreatorSpy)
+                .createSchemalessDocumentsFromJson(invalidJson);
 
         // Call the method under test and verify it throws an exception
-        DocumentProcessingException exception = assertThrows(DocumentProcessingException.class, () -> {
-            indexingServiceSpy.indexJsonDocuments("test_collection", invalidJson);
-        });
+        DocumentProcessingException exception =
+                assertThrows(
+                        DocumentProcessingException.class,
+                        () -> {
+                            indexingServiceSpy.indexJsonDocuments("test_collection", invalidJson);
+                        });
 
         // Verify the exception message
         assertTrue(exception.getMessage().contains("Invalid JSON"));

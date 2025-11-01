@@ -29,14 +29,16 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.io.IOException;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 /**
- * Comprehensive test suite for the SchemaService class.
- * Tests schema retrieval functionality with various scenarios including success and error cases.
+ * Comprehensive test suite for the SchemaService class. Tests schema retrieval functionality with
+ * various scenarios including success and error cases.
  */
 @ExtendWith(MockitoExtension.class)
 class SchemaServiceTest {
@@ -61,7 +63,7 @@ class SchemaServiceTest {
     void testSchemaService_InstantiatesCorrectly() {
         // Given/When
         SchemaService service = new SchemaService(solrClient);
-        
+
         // Then
         assertNotNull(service, "SchemaService should be instantiated correctly");
     }
@@ -70,63 +72,74 @@ class SchemaServiceTest {
     void testGetSchema_CollectionNotFound() throws Exception {
         // Given
         final String nonExistentCollection = "non_existent_collection";
-        
+
         // When SolrClient throws an exception for non-existent collection
         when(solrClient.request(any(SchemaRequest.class), eq(nonExistentCollection)))
-                .thenThrow(new SolrServerException("Collection not found: " + nonExistentCollection));
+                .thenThrow(
+                        new SolrServerException("Collection not found: " + nonExistentCollection));
 
         // Then
-        assertThrows(Exception.class, () -> {
-            schemaService.getSchema(nonExistentCollection);
-        });
+        assertThrows(
+                Exception.class,
+                () -> {
+                    schemaService.getSchema(nonExistentCollection);
+                });
     }
 
     @Test
     void testGetSchema_SolrServerException() throws Exception {
         // Given
         final String collectionName = "test_collection";
-        
+
         // When SolrClient throws a SolrServerException
         when(solrClient.request(any(SchemaRequest.class), eq(collectionName)))
                 .thenThrow(new SolrServerException("Solr server error"));
 
         // Then
-        assertThrows(Exception.class, () -> {
-            schemaService.getSchema(collectionName);
-        });
+        assertThrows(
+                Exception.class,
+                () -> {
+                    schemaService.getSchema(collectionName);
+                });
     }
 
     @Test
     void testGetSchema_IOException() throws Exception {
         // Given
         final String collectionName = "test_collection";
-        
+
         // When SolrClient throws an IOException
         when(solrClient.request(any(SchemaRequest.class), eq(collectionName)))
                 .thenThrow(new IOException("Network connection error"));
 
         // Then
-        assertThrows(Exception.class, () -> {
-            schemaService.getSchema(collectionName);
-        });
+        assertThrows(
+                Exception.class,
+                () -> {
+                    schemaService.getSchema(collectionName);
+                });
     }
 
     @Test
     void testGetSchema_WithNullCollection() {
         // Given a null collection name
         // Then should throw an exception (NullPointerException or IllegalArgumentException)
-        assertThrows(Exception.class, () -> {
-            schemaService.getSchema(null);
-        });
+        assertThrows(
+                Exception.class,
+                () -> {
+                    schemaService.getSchema(null);
+                });
     }
 
     @Test
     void testGetSchema_WithEmptyCollection() {
         // Given an empty collection name
         // Then should throw an exception
-        assertThrows(Exception.class, () -> {
-            schemaService.getSchema("");
-        });
+        assertThrows(
+                Exception.class,
+                () -> {
+                    schemaService.getSchema("");
+                });
     }
 
     @Test
@@ -139,8 +152,9 @@ class SchemaServiceTest {
     @Test
     void testConstructor_WithNullClient() {
         // Test constructor with null client
-        assertDoesNotThrow(() -> {
-            new SchemaService(null);
-        });
+        assertDoesNotThrow(
+                () -> {
+                    new SchemaService(null);
+                });
     }
 }

@@ -26,9 +26,9 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 /**
- * Application context loading test with mocked services.
- * This test verifies that the Spring application context can be loaded successfully
- * without requiring actual Solr connections, using mocked beans to prevent external dependencies.
+ * Application context loading test with mocked services. This test verifies that the Spring
+ * application context can be loaded successfully without requiring actual Solr connections, using
+ * mocked beans to prevent external dependencies.
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -50,5 +50,4 @@ class MainTest {
     void contextLoads() {
         // Context loading test - all services are mocked to prevent Solr API calls
     }
-
 }

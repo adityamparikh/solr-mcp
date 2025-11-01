@@ -6,6 +6,7 @@ plugins {
     alias(libs.plugins.spring.dependency.management)
     jacoco
     alias(libs.plugins.errorprone)
+    alias(libs.plugins.spotless)
     alias(libs.plugins.jib)
 }
 
@@ -79,6 +80,27 @@ tasks.withType<JavaCompile>().configureEach {
         error("NullAway") // bump checks from warnings (default) to errors
     }
 }
+
+tasks.build {
+    dependsOn(tasks.spotlessApply)
+}
+
+spotless {
+    java {
+        target("src/**/*.java")
+        googleJavaFormat().aosp().reflowLongStrings()
+        removeUnusedImports()
+        trimTrailingWhitespace()
+        endWithNewline()
+        importOrder()
+        formatAnnotations()
+    }
+    kotlinGradle {
+        target("*.gradle.kts")
+        ktlint()
+    }
+}
+
 
 // Jib Plugin Configuration
 // =========================
