@@ -16,12 +16,10 @@
  */
 package org.apache.solr.mcp.server.metadata;
 
-import static org.apache.solr.mcp.server.metadata.CollectionUtils.*;
-
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.modelcontextprotocol.spec.McpSchema.ReadResourceResult;
+import io.modelcontextprotocol.spec.McpSchema.TextResourceContents;
 import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrRequest;
@@ -31,14 +29,28 @@ import org.apache.solr.client.solrj.request.CollectionAdminRequest;
 import org.apache.solr.client.solrj.request.CoreAdminRequest;
 import org.apache.solr.client.solrj.request.GenericSolrRequest;
 import org.apache.solr.client.solrj.request.LukeRequest;
-import org.apache.solr.client.solrj.response.*;
+import org.apache.solr.client.solrj.response.CollectionAdminResponse;
+import org.apache.solr.client.solrj.response.CoreAdminResponse;
+import org.apache.solr.client.solrj.response.LukeResponse;
+import org.apache.solr.client.solrj.response.QueryResponse;
+import org.apache.solr.client.solrj.response.SolrPingResponse;
 import org.apache.solr.common.params.CoreAdminParams;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.mcp.server.config.SolrConfigurationProperties;
+import org.springaicommunity.mcp.annotation.McpResource;
 import org.springaicommunity.mcp.annotation.McpTool;
 import org.springaicommunity.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+
+import static org.apache.solr.mcp.server.metadata.CollectionUtils.getFloat;
+import static org.apache.solr.mcp.server.metadata.CollectionUtils.getInteger;
+import static org.apache.solr.mcp.server.metadata.CollectionUtils.getLong;
 
 /**
  * Spring Service providing comprehensive Solr collection management and
@@ -239,8 +251,15 @@ public class CollectionService {
 	/** Error message prefix for collection not found exceptions */
 	private static final String COLLECTION_NOT_FOUND_ERROR = "Collection not found: ";
 
+    private static final String APPLICATION_JSON = "application/json";
+
 	/** SolrJ client for communicating with Solr server */
 	private final SolrClient solrClient;
+
+    /**
+     * Jackson ObjectMapper for JSON serialization
+     */
+    private final ObjectMapper objectMapper;
 
 	/**
 	 * Constructs a new CollectionService with the required dependencies.
@@ -251,11 +270,14 @@ public class CollectionService {
 	 *
 	 * @param solrClient
 	 *            the SolrJ client instance for communicating with Solr
+     * @param objectMapper
+     *            Jackson ObjectMapper for JSON serialization
 	 * @see SolrClient
 	 * @see SolrConfigurationProperties
-	 */
-	public CollectionService(SolrClient solrClient) {
+     */
+    public CollectionService(SolrClient solrClient, ObjectMapper objectMapper) {
 		this.solrClient = solrClient;
+        this.objectMapper = objectMapper;
 	}
 
 	/**
@@ -323,7 +345,25 @@ public class CollectionService {
 			}
 		} catch (SolrServerException | IOException e) {
 			return new ArrayList<>();
-		}
+        }
+    }
+
+    /**
+     * MCP Resource for listing all available Solr collections/cores.
+     *
+     * <p>
+     * This resource provides a JSON array of all collection names available in the
+     * connected Solr instance. MCP clients should use this resource to discover
+     * valid collection names before constructing queries.
+     *
+     * @return ReadResourceResult containing JSON array of collection names
+     */
+    @McpResource(uri = "solr://collections", name = "Solr Collections", description = "Lists all available Solr collections/cores. Use this to discover valid collection names before querying.")
+    public ReadResourceResult getCollectionsResource() {
+        List<String> collections = listCollections();
+        String json = toJson(collections);
+
+        return new ReadResourceResult(List.of(new TextResourceContents("solr://collections", APPLICATION_JSON, json)));
 	}
 
 	/**
@@ -991,6 +1031,20 @@ public class CollectionService {
 
 		} catch (Exception e) {
 			return new SolrHealthStatus(false, e.getMessage(), null, null, new Date(), null, null, null);
+        }
+    }
+
+    /**
+     * Converts an object to JSON string.
+     *
+     * @param obj the object to serialize
+     * @return JSON string representation
+     */
+    private String toJson(Object obj) {
+        try {
+            return objectMapper.writeValueAsString(obj);
+        } catch (JsonProcessingException e) {
+            return "{\"error\": \"Failed to serialize response\"}";
 		}
 	}
 }

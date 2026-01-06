@@ -16,16 +16,7 @@
  */
 package org.apache.solr.mcp.server.metadata;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.*;
-
-import java.io.IOException;
-import java.lang.reflect.Method;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrRequest;
 import org.apache.solr.client.solrj.SolrServerException;
@@ -40,6 +31,25 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.io.IOException;
+import java.lang.reflect.Method;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class CollectionServiceTest {
@@ -59,11 +69,14 @@ class CollectionServiceTest {
 	@Mock
 	private SolrPingResponse pingResponse;
 
+    private ObjectMapper objectMapper;
+
 	private CollectionService collectionService;
 
 	@BeforeEach
 	void setUp() {
-		collectionService = new CollectionService(solrClient);
+        objectMapper = new ObjectMapper();
+        collectionService = new CollectionService(solrClient, objectMapper);
 	}
 
 	// Constructor tests
@@ -76,7 +89,7 @@ class CollectionServiceTest {
 	void listCollections_WithCloudSolrClient_ShouldReturnCollections() throws Exception {
 		// Given - This test verifies the service can be constructed with
 		// CloudSolrClient
-		CollectionService cloudService = new CollectionService(cloudSolrClient);
+        CollectionService cloudService = new CollectionService(cloudSolrClient, objectMapper);
 
 		// Note: This test cannot fully exercise listCollections() because it requires
 		// mocking static methods in CollectionAdminRequest which requires PowerMock or
@@ -702,7 +715,7 @@ class CollectionServiceTest {
 
 		when(cloudClient.request(any(), any())).thenReturn(response);
 
-		CollectionService service = new CollectionService(cloudClient);
+        CollectionService service = new CollectionService(cloudClient, objectMapper);
 		List<String> result = service.listCollections();
 
 		assertNotNull(result);
@@ -720,7 +733,7 @@ class CollectionServiceTest {
 
 		when(cloudClient.request(any(), any())).thenReturn(response);
 
-		CollectionService service = new CollectionService(cloudClient);
+        CollectionService service = new CollectionService(cloudClient, objectMapper);
 		List<String> result = service.listCollections();
 
 		assertNotNull(result);
@@ -732,7 +745,7 @@ class CollectionServiceTest {
 		CloudSolrClient cloudClient = mock(CloudSolrClient.class);
 		when(cloudClient.request(any(), any())).thenThrow(new SolrServerException("Connection error"));
 
-		CollectionService service = new CollectionService(cloudClient);
+        CollectionService service = new CollectionService(cloudClient, objectMapper);
 		List<String> result = service.listCollections();
 
 		assertNotNull(result);
@@ -755,7 +768,7 @@ class CollectionServiceTest {
 		// Mock the solrClient request to return the response
 		when(solrClient.request(any(), any())).thenReturn(response);
 
-		CollectionService service = new CollectionService(solrClient);
+        CollectionService service = new CollectionService(solrClient, objectMapper);
 		List<String> result = service.listCollections();
 
 		assertNotNull(result);
@@ -768,7 +781,7 @@ class CollectionServiceTest {
 	void listCollections_NonCloudClient_Error() throws Exception {
 		when(solrClient.request(any(), any())).thenThrow(new IOException("IO error"));
 
-		CollectionService service = new CollectionService(solrClient);
+        CollectionService service = new CollectionService(solrClient, objectMapper);
 		List<String> result = service.listCollections();
 
 		assertNotNull(result);

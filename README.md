@@ -10,6 +10,7 @@ A Spring AI Model Context Protocol (MCP) server that provides tools for interact
 - 📝 Index documents in JSON, CSV, and XML
 - 📊 Manage collections and view statistics
 - 🔧 Inspect schema
+- 📚 MCP Resources for collection and schema discovery with autocompletion
 - 🔌 Transports: STDIO (Claude Desktop) and HTTP (MCP Inspector)
 - 🔐 OAuth2 security with Auth0 (HTTP mode only)
 - 🐳 Docker images built with Jib
@@ -224,7 +225,7 @@ MCP tools.
 
 For complete setup instructions, see [docs/AUTH0_SETUP.md](docs/AUTH0_SETUP.md)
 
-## Available MCP tools
+## Available MCP Tools
 
 | Tool | Description |
 |------|-------------|
@@ -234,6 +235,23 @@ For complete setup instructions, see [docs/AUTH0_SETUP.md](docs/AUTH0_SETUP.md)
 | `getCollectionStats` | Get statistics and metrics for a collection |
 | `checkHealth` | Check the health status of a collection |
 | `getSchema` | Retrieve schema information for a collection |
+
+## Available MCP Resources
+
+MCP Resources provide read-only access to Solr metadata, helping AI assistants understand available collections and
+their schemas before constructing queries.
+
+| Resource URI                 | Name              | Description                                                                        |
+|------------------------------|-------------------|------------------------------------------------------------------------------------|
+| `solr://collections`         | Solr Collections  | Lists all available Solr collections/cores                                         |
+| `solr://{collection}/schema` | Collection Schema | Returns schema (fields, field types, dynamic fields, copy fields) for a collection |
+
+### Resource Autocompletion
+
+The schema resource supports autocompletion for the `{collection}` parameter. When using MCP Inspector or compatible
+clients, typing in the collection field will suggest available collection names.
+
+![MCP Inspector Resource Completion](images/mcp-inspector-resource-completion.png)
 
 ## Screenshots
 
@@ -256,6 +274,14 @@ For complete setup instructions, see [docs/AUTH0_SETUP.md](docs/AUTH0_SETUP.md)
 - MCP Inspector (STDIO):
 
   ![MCP Inspector STDIO](images/mcp-inspector-stdio.png)
+
+- MCP Inspector (Resources - List Collections):
+
+  ![MCP Inspector List Resources](images/mcp-inspector-list-resources.png)
+
+- MCP Inspector (Resources - Schema with Completion):
+
+  ![MCP Inspector Resource Completion](images/mcp-inspector-resource-completion.png)
 
 ## Documentation
 
