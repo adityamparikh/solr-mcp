@@ -16,12 +16,7 @@
  */
 package org.apache.solr.mcp.server.metadata;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.when;
-
-import java.io.IOException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.request.schema.SchemaRequest;
@@ -32,6 +27,15 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.io.IOException;
+
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.when;
 
 /**
  * Comprehensive test suite for the SchemaService class. Tests schema retrieval
@@ -49,17 +53,23 @@ class SchemaServiceTest {
 	@Mock
 	private SchemaRepresentation schemaRepresentation;
 
+    private ObjectMapper objectMapper;
+
 	private SchemaService schemaService;
+
+    private CollectionService collectionService;
 
 	@BeforeEach
 	void setUp() {
-		schemaService = new SchemaService(solrClient);
+        objectMapper = new ObjectMapper();
+        collectionService = new CollectionService(solrClient, objectMapper);
+        schemaService = new SchemaService(solrClient, objectMapper, collectionService);
 	}
 
 	@Test
 	void testSchemaService_InstantiatesCorrectly() {
 		// Given/When
-		SchemaService service = new SchemaService(solrClient);
+        SchemaService service = new SchemaService(solrClient, objectMapper, collectionService);
 
 		// Then
 		assertNotNull(service, "SchemaService should be instantiated correctly");
@@ -132,7 +142,7 @@ class SchemaServiceTest {
 	@Test
 	void testConstructor() {
 		// Test that constructor properly initializes the service
-		SchemaService service = new SchemaService(solrClient);
+        SchemaService service = new SchemaService(solrClient, objectMapper, collectionService);
 		assertNotNull(service);
 	}
 
@@ -140,7 +150,7 @@ class SchemaServiceTest {
 	void testConstructor_WithNullClient() {
 		// Test constructor with null client
 		assertDoesNotThrow(() -> {
-			new SchemaService(null);
+            new SchemaService(solrClient, objectMapper, collectionService);
 		});
 	}
 }

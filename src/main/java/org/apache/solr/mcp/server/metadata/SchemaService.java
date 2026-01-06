@@ -16,11 +16,19 @@
  */
 package org.apache.solr.mcp.server.metadata;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.modelcontextprotocol.spec.McpSchema.ReadResourceResult;
+import io.modelcontextprotocol.spec.McpSchema.TextResourceContents;
 import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.request.schema.SchemaRequest;
 import org.apache.solr.client.solrj.response.schema.SchemaRepresentation;
+import org.apache.solr.mcp.server.util.JsonUtils;
+import org.springaicommunity.mcp.annotation.McpComplete;
+import org.springaicommunity.mcp.annotation.McpResource;
 import org.springaicommunity.mcp.annotation.McpTool;
 import org.springframework.stereotype.Service;
+
+import java.util.List;
 
 /**
  * Spring Service providing schema introspection and management capabilities for
@@ -119,11 +127,23 @@ import org.springframework.stereotype.Service;
 @Service
 public class SchemaService {
 
+    private static final String APPLICATION_JSON = "application/json";
+
 	/** SolrJ client for communicating with Solr server */
 	private final SolrClient solrClient;
 
-	/**
-	 * Constructs a new SchemaService with the required SolrClient dependency.
+    /**
+     * Jackson ObjectMapper for JSON serialization
+     */
+    private final ObjectMapper objectMapper;
+
+    /**
+     * Collection service for listing available collections
+     */
+    private final CollectionService collectionService;
+
+    /**
+     * Constructs a new SchemaService with the required dependencies.
 	 *
 	 * <p>
 	 * This constructor is automatically called by Spring's dependency injection
@@ -132,10 +152,16 @@ public class SchemaService {
 	 *
 	 * @param solrClient
 	 *            the SolrJ client instance for communicating with Solr
-	 * @see SolrClient
-	 */
-	public SchemaService(SolrClient solrClient) {
+     * @param objectMapper
+     *            Jackson ObjectMapper for JSON serialization
+     * @param collectionService
+     *            service for listing available collections
+     * @see SolrClient
+     */
+    public SchemaService(SolrClient solrClient, ObjectMapper objectMapper, CollectionService collectionService) {
 		this.solrClient = solrClient;
+        this.objectMapper = objectMapper;
+        this.collectionService = collectionService;
 	}
 
 	/**
@@ -221,5 +247,41 @@ public class SchemaService {
 	public SchemaRepresentation getSchema(String collection) throws Exception {
 		SchemaRequest schemaRequest = new SchemaRequest();
 		return schemaRequest.process(solrClient, collection).getSchemaRepresentation();
+    }
+
+    /**
+     * MCP Resource for retrieving the schema definition of a Solr collection.
+     *
+     * <p>
+     * This resource provides detailed schema information including fields, field
+     * types, dynamic fields, and copy fields. MCP clients should use this resource
+     * to understand the structure of a collection before constructing queries.
+     *
+     * @param collection the name of the collection to retrieve schema for
+     * @return ReadResourceResult containing JSON schema representation
+     * @throws Exception if the collection does not exist or schema retrieval fails
+     */
+    @McpResource(uri = "solr://{collection}/schema", name = "Collection Schema", description = "Returns the schema (fields, field types, dynamic fields, copy fields) for a Solr collection. Use this to understand available fields before constructing queries.")
+    public ReadResourceResult getSchemaResource(String collection) throws Exception {
+        SchemaRepresentation schema = getSchema(collection);
+        String json = JsonUtils.toJson(objectMapper, schema);
+        String resourceUri = "solr://" + collection + "/schema";
+
+        return new ReadResourceResult(List.of(new TextResourceContents(resourceUri, APPLICATION_JSON, json)));
+    }
+
+    /**
+     * Provides autocompletion suggestions for the collection parameter in the
+     * schema resource URI template.
+     *
+     * @param prefix the current input prefix to filter suggestions
+     * @return list of matching collection names
+     */
+    @McpComplete(uri = "solr://{collection}/schema")
+    public List<String> completeCollection(String prefix) {
+        List<String> collections = collectionService.listCollections();
+        String lowerPrefix = prefix.toLowerCase();
+        return collections.stream().filter(collection -> collection.toLowerCase().startsWith(lowerPrefix)).toList();
 	}
+
 }

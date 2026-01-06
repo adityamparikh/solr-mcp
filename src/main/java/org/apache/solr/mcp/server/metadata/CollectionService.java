@@ -16,7 +16,6 @@
  */
 package org.apache.solr.mcp.server.metadata;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.modelcontextprotocol.spec.McpSchema.ReadResourceResult;
 import io.modelcontextprotocol.spec.McpSchema.TextResourceContents;
@@ -38,6 +37,7 @@ import org.apache.solr.common.params.CoreAdminParams;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.mcp.server.config.SolrConfigurationProperties;
+import org.apache.solr.mcp.server.util.JsonUtils;
 import org.springaicommunity.mcp.annotation.McpResource;
 import org.springaicommunity.mcp.annotation.McpTool;
 import org.springaicommunity.mcp.annotation.McpToolParam;
@@ -361,7 +361,7 @@ public class CollectionService {
     @McpResource(uri = "solr://collections", name = "Solr Collections", description = "Lists all available Solr collections/cores. Use this to discover valid collection names before querying.")
     public ReadResourceResult getCollectionsResource() {
         List<String> collections = listCollections();
-        String json = toJson(collections);
+        String json = JsonUtils.toJson(objectMapper, collections);
 
         return new ReadResourceResult(List.of(new TextResourceContents("solr://collections", APPLICATION_JSON, json)));
 	}
@@ -1031,20 +1031,7 @@ public class CollectionService {
 
 		} catch (Exception e) {
 			return new SolrHealthStatus(false, e.getMessage(), null, null, new Date(), null, null, null);
-        }
-    }
-
-    /**
-     * Converts an object to JSON string.
-     *
-     * @param obj the object to serialize
-     * @return JSON string representation
-     */
-    private String toJson(Object obj) {
-        try {
-            return objectMapper.writeValueAsString(obj);
-        } catch (JsonProcessingException e) {
-            return "{\"error\": \"Failed to serialize response\"}";
 		}
 	}
+
 }
