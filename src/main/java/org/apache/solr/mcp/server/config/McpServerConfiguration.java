@@ -16,13 +16,12 @@
  */
 package org.apache.solr.mcp.server.config;
 
-import java.util.List;
 import org.springaicommunity.mcp.security.server.config.McpServerOAuth2Configurer;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
-import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.CsrfConfigurer;
@@ -31,16 +30,18 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import java.util.List;
+
 @Profile("http")
 @Configuration
 @EnableWebSecurity
-@EnableMethodSecurity // ⬅️ enable annotation-driven security
 class McpServerConfiguration {
 
-	@Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri}")
+    @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri:}")
 	private String issuerUrl;
 
 	@Bean
+    @ConditionalOnProperty(name = "spring.security.enabled", havingValue = "true", matchIfMissing = true)
 	SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
 		return http
 				// ⬇️ Open every request on the server
@@ -59,6 +60,15 @@ class McpServerConfiguration {
 				.cors(cors -> cors.configurationSource(corsConfigurationSource())).csrf(CsrfConfigurer::disable)
 				.build();
 	}
+
+    @Bean
+    @ConditionalOnProperty(name = "spring.security.enabled", havingValue = "false")
+    SecurityFilterChain unsecured(HttpSecurity http) throws Exception {
+        return http.authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
+                // MCP inspector
+                .cors(cors -> cors.configurationSource(corsConfigurationSource())).csrf(CsrfConfigurer::disable)
+                .build();
+    }
 
 	public CorsConfigurationSource corsConfigurationSource() {
 		CorsConfiguration configuration = new CorsConfiguration();
