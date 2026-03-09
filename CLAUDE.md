@@ -116,6 +116,8 @@ Example: `feat(search): add fuzzy search support`
 ## Active Technologies
 - Java 25 (GraalVM 25+, enforced via Gradle toolchain) + Spring Boot 4.0.2, Spring AI 2.0.0-M2 (`spring-ai-core`, `spring-ai-vector-store`), SolrJ 10.0.0, Spring AI starter for chosen embedding provider (e.g., `spring-ai-starter-openai`) (002-semantic-hybrid-search)
 - Apache Solr (primary); vector embeddings stored in a `DenseVectorField` within each collection's schema (002-semantic-hybrid-search)
+- Java 25 (GraalVM 25+, enforced via Gradle toolchain) + Spring Boot 4.0.2, Spring AI 2.0.0-M2, SolrJ 10.0.0; `ai.docling:docling-serve-client:0.4.3`, `ai.docling:docling-testcontainers:0.1.4` (testing) (003-rich-document-indexing)
+- Apache Solr — documents indexed as single Solr records with `content` (markdown text), `source`, `format`, and optional frontmatter fields (003-rich-document-indexing)
 
 ## Recent Changes
 - 002-semantic-hybrid-search: Added Java 25 (GraalVM 25+, enforced via Gradle toolchain) + Spring Boot 4.0.2, Spring AI 2.0.0-M2 (`spring-ai-core`, `spring-ai-vector-store`), SolrJ 10.0.0, Spring AI starter for chosen embedding provider (e.g., `spring-ai-starter-openai`)
