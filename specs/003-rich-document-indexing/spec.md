@@ -16,6 +16,18 @@
 - Q: Should the implementation use `docling4j` (embeds Python via GraalPy — no external Docker container) or `docling-java` (HTTP client to external Docling Serve Docker container)? → A: **docling4j** (`com.ibm.docling:docling4j:0.1.1`) is preferred for JVM deployments because it eliminates the external Docker dependency. GraalPy itself can run in GraalVM native image mode, but the Python ML libraries that power docling (PyTorch, ONNX, OCR engines) cannot be statically compiled or bundled into a native executable. Therefore: (1) JVM deployments (STDIO/HTTP from source, JAR, or JVM Docker image) use `docling4j` — single-deployment-unit, no sidecar required; (2) Native image deployments (feature 001) cannot bundle the ML dependencies — `index-rich-document` is unavailable in native mode and returns a clear error. `index-markdown` is unaffected. See Constraints & Tradeoffs for full details.
 - Q: Would Apache Tika be a simpler alternative to docling4j, and does docling-produced markdown differ meaningfully from Tika-extracted text for lexical or vector similarity search? → A: For DOCX, HTML, and PPTX, Tika quality is comparable. For complex multi-column PDFs (the P1 use case — research papers), docling's ML-based layout analysis produces meaningfully better output: it preserves reading order across columns, correctly groups table content, and integrates OCR coherently. Tika's rule-based extraction linearises multi-column layouts unpredictably, producing out-of-order token sequences that degrade both BM25 lexical relevance (scattered sentence fragments score poorly) and vector embedding quality (incoherent text sequences produce semantically diluted embeddings). docling4j is retained. Apache Tika is documented as a future fallback option in Constraints & Tradeoffs.
 
+### Session 2026-03-09
+
+- Q: [OPEN] When `index-rich-document` is called with a URL or file path pointing to a `.md` file, what should happen?
+  - **Option A** — Return a clear error: "Use `index-markdown` for markdown content." Keeps tool responsibilities strictly separated; caller must choose the right tool.
+  - **Option B (recommended)** — Auto-detect `.md`/`text/markdown` and route directly to `MarkdownDocumentCreator`, bypassing docling4j entirely. Transparent to the caller; markdown is plain text and needs no ML conversion.
+  - **Option C** — Route through docling4j (Markdown is a supported InputFormat). Consistent with other formats but incurs unnecessary GraalPy startup overhead for plain text.
+
+- Q: [OPEN] In what format should the `content` field store the markdown content in Solr?
+  - **Option A (recommended)** — Store **raw markdown** (with syntax) in `content` as a `text_general` field. Solr's standard tokenizer strips `#`, `*`, `[]()` as punctuation during analysis — lexical search works correctly without pre-processing. For feature 002 embedding generation, the application strips markdown syntax before calling the embedding model (separate concern).
+  - **Option B** — Strip markdown to **plain text** before indexing into `content`. Simpler for embeddings; returned documents contain plain text, not the original markdown.
+  - **Option C** — Store raw markdown in `content_raw` (stored, not indexed) and stripped plain text in `content` (indexed). Best retrieval fidelity and clean search; doubles storage and adds schema complexity.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 — Index a Rich Document via URL (Priority: P1) 🎯 MVP
