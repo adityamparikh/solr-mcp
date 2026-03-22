@@ -67,6 +67,8 @@ class IndexingServiceTest {
 	private SearchService searchService;
 	@Autowired
 	private SolrClient solrClient;
+	@Autowired
+	private org.apache.solr.mcp.server.search.EmbeddingService embeddingService;
 
 	@BeforeEach
 	void setUp() throws Exception {
@@ -80,8 +82,8 @@ class IndexingServiceTest {
 		indexingDocumentCreator = new IndexingDocumentCreator(xmlDocumentCreator, csvDocumentCreator,
 				jsonDocumentCreator);
 
-		indexingService = new IndexingService(solrClient, indexingDocumentCreator);
-		searchService = new SearchService(solrClient);
+		indexingService = new IndexingService(solrClient, indexingDocumentCreator, embeddingService);
+		searchService = new SearchService(solrClient, embeddingService);
 
 		if (!initialized) {
 			// Create collection
@@ -189,11 +191,10 @@ class IndexingServiceTest {
 				""";
 
 		// Index documents
-		indexingService.indexJsonDocuments(COLLECTION_NAME, json);
+		indexingService.indexJsonDocuments(COLLECTION_NAME, json, null, null);
 
 		// Verify documents were indexed by searching for them
-		SearchResponse result = searchService.search(COLLECTION_NAME, "id:test002 OR id:test003", null, null, null,
-				null, null);
+		SearchResponse result = searchService.search(COLLECTION_NAME, "id:test002 OR id:test003", null, null, null, null, null, null, null, null);
 
 		assertNotNull(result);
 		List<Map<String, Object>> documents = result.documents();
@@ -294,10 +295,10 @@ class IndexingServiceTest {
 				""";
 
 		// Index documents
-		indexingService.indexJsonDocuments(COLLECTION_NAME, json);
+		indexingService.indexJsonDocuments(COLLECTION_NAME, json, null, null);
 
 		// Verify documents were indexed by searching for them
-		SearchResponse result = searchService.search(COLLECTION_NAME, "id:test004", null, null, null, null, null);
+		SearchResponse result = searchService.search(COLLECTION_NAME, "id:test004", null, null, null, null, null, null, null, null);
 
 		assertNotNull(result);
 		List<Map<String, Object>> documents = result.documents();
@@ -358,10 +359,10 @@ class IndexingServiceTest {
 				""";
 
 		// Index documents
-		indexingService.indexJsonDocuments(COLLECTION_NAME, json);
+		indexingService.indexJsonDocuments(COLLECTION_NAME, json, null, null);
 
 		// Verify documents were indexed with sanitized field names
-		SearchResponse result = searchService.search(COLLECTION_NAME, "id:test005", null, null, null, null, null);
+		SearchResponse result = searchService.search(COLLECTION_NAME, "id:test005", null, null, null, null, null, null, null, null);
 
 		assertNotNull(result);
 		List<Map<String, Object>> documents = result.documents();
@@ -450,10 +451,10 @@ class IndexingServiceTest {
 				""";
 
 		// Index documents
-		indexingService.indexJsonDocuments(COLLECTION_NAME, json);
+		indexingService.indexJsonDocuments(COLLECTION_NAME, json, null, null);
 
 		// Verify documents were indexed by searching for them
-		SearchResponse result = searchService.search(COLLECTION_NAME, "id:nested001", null, null, null, null, null);
+		SearchResponse result = searchService.search(COLLECTION_NAME, "id:nested001", null, null, null, null, null, null, null, null);
 
 		assertNotNull(result);
 		List<Map<String, Object>> documents = result.documents();
@@ -530,11 +531,10 @@ class IndexingServiceTest {
 				""";
 
 		// Index documents
-		indexingService.indexJsonDocuments(COLLECTION_NAME, json);
+		indexingService.indexJsonDocuments(COLLECTION_NAME, json, null, null);
 
 		// Verify documents were indexed by searching for them
-		SearchResponse result = searchService.search(COLLECTION_NAME, "id:special_fields_001", null, null, null, null,
-				null);
+		SearchResponse result = searchService.search(COLLECTION_NAME, "id:special_fields_001", null, null, null, null, null, null, null, null);
 
 		assertNotNull(result);
 		List<Map<String, Object>> documents = result.documents();
@@ -619,11 +619,10 @@ class IndexingServiceTest {
 				""";
 
 		// Index documents
-		indexingService.indexJsonDocuments(COLLECTION_NAME, json);
+		indexingService.indexJsonDocuments(COLLECTION_NAME, json, null, null);
 
 		// Verify documents were indexed by searching for them
-		SearchResponse result = searchService.search(COLLECTION_NAME, "id:array_objects_001", null, null, null, null,
-				null);
+		SearchResponse result = searchService.search(COLLECTION_NAME, "id:array_objects_001", null, null, null, null, null, null, null, null);
 
 		assertNotNull(result);
 		List<Map<String, Object>> documents = result.documents();
@@ -769,11 +768,14 @@ class UnitTests {
 	@Mock
 	private IndexingDocumentCreator indexingDocumentCreator;
 
+	@Mock
+	private org.apache.solr.mcp.server.search.EmbeddingService embeddingServiceMock;
+
 	private IndexingService indexingService;
 
 	@BeforeEach
 	void setUp() {
-		indexingService = new IndexingService(solrClient, indexingDocumentCreator);
+		indexingService = new IndexingService(solrClient, indexingDocumentCreator, embeddingServiceMock);
 	}
 
 	@Test
@@ -789,7 +791,7 @@ class UnitTests {
 		when(solrClient.add(eq("test_collection"), any(Collection.class))).thenReturn(null);
 		when(solrClient.commit("test_collection")).thenReturn(null);
 
-		indexingService.indexJsonDocuments("test_collection", json);
+		indexingService.indexJsonDocuments("test_collection", json, null, null);
 
 		verify(indexingDocumentCreator).createSchemalessDocumentsFromJson(json);
 		verify(solrClient).add(eq("test_collection"), any(Collection.class));
@@ -803,7 +805,7 @@ class UnitTests {
 				new org.apache.solr.mcp.server.indexing.documentcreator.DocumentProcessingException("Invalid JSON"));
 
 		assertThrows(org.apache.solr.mcp.server.indexing.documentcreator.DocumentProcessingException.class, () -> {
-			indexingService.indexJsonDocuments("test_collection", invalidJson);
+			indexingService.indexJsonDocuments("test_collection", invalidJson, null, null);
 		});
 		verify(solrClient, never()).add(anyString(), any(Collection.class));
 		verify(solrClient, never()).commit(anyString());
@@ -817,7 +819,7 @@ class UnitTests {
 		when(solrClient.add(eq("test_collection"), any(Collection.class))).thenReturn(null);
 		when(solrClient.commit("test_collection")).thenReturn(null);
 
-		indexingService.indexCsvDocuments("test_collection", csv);
+		indexingService.indexCsvDocuments("test_collection", csv, null, null);
 
 		verify(indexingDocumentCreator).createSchemalessDocumentsFromCsv(csv);
 		verify(solrClient).add(eq("test_collection"), any(Collection.class));
@@ -831,7 +833,7 @@ class UnitTests {
 				new org.apache.solr.mcp.server.indexing.documentcreator.DocumentProcessingException("Invalid CSV"));
 
 		assertThrows(org.apache.solr.mcp.server.indexing.documentcreator.DocumentProcessingException.class, () -> {
-			indexingService.indexCsvDocuments("test_collection", invalidCsv);
+			indexingService.indexCsvDocuments("test_collection", invalidCsv, null, null);
 		});
 		verify(solrClient, never()).add(anyString(), any(Collection.class));
 		verify(solrClient, never()).commit(anyString());
@@ -845,7 +847,7 @@ class UnitTests {
 		when(solrClient.add(eq("test_collection"), any(Collection.class))).thenReturn(null);
 		when(solrClient.commit("test_collection")).thenReturn(null);
 
-		indexingService.indexXmlDocuments("test_collection", xml);
+		indexingService.indexXmlDocuments("test_collection", xml, null, null);
 
 		verify(indexingDocumentCreator).createSchemalessDocumentsFromXml(xml);
 		verify(solrClient).add(eq("test_collection"), any(Collection.class));
@@ -859,7 +861,7 @@ class UnitTests {
 				new org.apache.solr.mcp.server.indexing.documentcreator.DocumentProcessingException("Parser error"));
 
 		assertThrows(org.apache.solr.mcp.server.indexing.documentcreator.DocumentProcessingException.class, () -> {
-			indexingService.indexXmlDocuments("test_collection", xml);
+			indexingService.indexXmlDocuments("test_collection", xml, null, null);
 		});
 		verify(solrClient, never()).add(anyString(), any(Collection.class));
 		verify(solrClient, never()).commit(anyString());
@@ -873,7 +875,7 @@ class UnitTests {
 						"SAX parsing error"));
 
 		assertThrows(org.apache.solr.mcp.server.indexing.documentcreator.DocumentProcessingException.class, () -> {
-			indexingService.indexXmlDocuments("test_collection", xml);
+			indexingService.indexXmlDocuments("test_collection", xml, null, null);
 		});
 		verify(solrClient, never()).add(anyString(), any(Collection.class));
 		verify(solrClient, never()).commit(anyString());
@@ -993,7 +995,7 @@ class UnitTests {
 				.thenThrow(new SolrServerException("Solr connection error"));
 		when(solrClient.commit("test_collection")).thenReturn(null);
 
-		indexingService.indexJsonDocuments("test_collection", json);
+		indexingService.indexJsonDocuments("test_collection", json, null, null);
 
 		verify(solrClient).add(eq("test_collection"), any(List.class));
 		verify(solrClient).add(eq("test_collection"), any(SolrInputDocument.class));
@@ -1009,7 +1011,7 @@ class UnitTests {
 				.thenThrow(new IOException("Network error"));
 		when(solrClient.commit("test_collection")).thenReturn(null);
 
-		indexingService.indexCsvDocuments("test_collection", csv);
+		indexingService.indexCsvDocuments("test_collection", csv, null, null);
 
 		verify(solrClient).add(eq("test_collection"), any(List.class));
 		verify(solrClient).add(eq("test_collection"), any(SolrInputDocument.class));

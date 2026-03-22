@@ -129,9 +129,9 @@ class OtlpExportIntegrationTest {
 
 		// When: We perform operations that create spans
 		// Then: Operations should execute without throwing exceptions
-		indexingService.indexJsonDocuments(COLLECTION_NAME, testData);
+		indexingService.indexJsonDocuments(COLLECTION_NAME, testData, null, null);
 		solrClient.commit(COLLECTION_NAME);
-		searchService.search(COLLECTION_NAME, "*:*", null, null, null, null, null);
+		searchService.search(COLLECTION_NAME, "*:*", null, null, null, null, null, null, null, null);
 
 		// If we reach here, spans were created and exported to LGTM stack
 		// For unit-level verification of span creation, see DistributedTracingTest
@@ -158,11 +158,11 @@ class OtlpExportIntegrationTest {
 				""";
 
 		// Then: All operations should succeed
-		indexingService.indexJsonDocuments(COLLECTION_NAME, testData);
+		indexingService.indexJsonDocuments(COLLECTION_NAME, testData, null, null);
 		solrClient.commit(COLLECTION_NAME);
 
 		// Verify we can search for the documents
-		var results = searchService.search(COLLECTION_NAME, "id:test1", null, null, null, null, null);
+		var results = searchService.search(COLLECTION_NAME, "id:test1", null, null, null, null, null, null, null, null);
 		assertThat(results).as("Should find indexed document").isNotNull();
 	}
 
@@ -172,9 +172,9 @@ class OtlpExportIntegrationTest {
 		String testData = """
 				[{"id": "metrics_test_1", "name": "Metrics Test"}]
 				""";
-		indexingService.indexJsonDocuments(COLLECTION_NAME, testData);
+		indexingService.indexJsonDocuments(COLLECTION_NAME, testData, null, null);
 		solrClient.commit(COLLECTION_NAME);
-		searchService.search(COLLECTION_NAME, "*:*", null, null, null, null, null);
+		searchService.search(COLLECTION_NAME, "*:*", null, null, null, null, null, null, null, null);
 
 		// When: We query Prometheus for metrics
 		LgtmAssertions lgtm = new LgtmAssertions(lgtmStack, objectMapper);

@@ -37,6 +37,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.ObjectProvider;
 
 @ExtendWith(MockitoExtension.class)
 class SearchServiceDirectTest {
@@ -51,7 +52,25 @@ class SearchServiceDirectTest {
 
 	@BeforeEach
 	void setUp() {
-		searchService = new SearchService(solrClient);
+		// Create EmbeddingService with no embedding model configured (keyword-only mode)
+		ObjectProvider<org.springframework.ai.embedding.EmbeddingModel> emptyProvider = new ObjectProvider<>() {
+			@Override
+			public org.springframework.ai.embedding.EmbeddingModel getObject() {
+				throw new org.springframework.beans.factory.NoSuchBeanDefinitionException("No EmbeddingModel");
+			}
+
+			@Override
+			public org.springframework.ai.embedding.EmbeddingModel getIfAvailable() {
+				return null;
+			}
+
+			@Override
+			public org.springframework.ai.embedding.EmbeddingModel getIfUnique() {
+				return null;
+			}
+		};
+		EmbeddingService embeddingService = new EmbeddingService(emptyProvider);
+		searchService = new SearchService(solrClient, embeddingService);
 	}
 
 	@Test
@@ -79,7 +98,7 @@ class SearchServiceDirectTest {
 		when(solrClient.query(eq("books"), any(SolrQuery.class))).thenReturn(queryResponse);
 
 		// Test
-		SearchResponse result = searchService.search("books", null, null, null, null, null, null);
+		SearchResponse result = searchService.search("books", null, null, null, null, null, null, null, null, null);
 
 		// Verify
 		assertNotNull(result);
@@ -122,7 +141,7 @@ class SearchServiceDirectTest {
 		when(solrClient.query(eq("books"), any(SolrQuery.class))).thenReturn(queryResponse);
 
 		// Test
-		SearchResponse result = searchService.search("books", null, null, null, null, null, null);
+		SearchResponse result = searchService.search("books", null, null, null, null, null, null, null, null, null);
 
 		// Verify
 		assertNotNull(result);
@@ -146,7 +165,7 @@ class SearchServiceDirectTest {
 		when(solrClient.query(eq("books"), any(SolrQuery.class))).thenReturn(queryResponse);
 
 		// Test
-		SearchResponse result = searchService.search("books", "nonexistent_query", null, null, null, null, null);
+		SearchResponse result = searchService.search("books", "nonexistent_query", null, null, null, null, null, null, null, null);
 
 		// Verify
 		assertNotNull(result);
@@ -179,7 +198,7 @@ class SearchServiceDirectTest {
 		when(solrClient.query(eq("books"), any(SolrQuery.class))).thenReturn(queryResponse);
 
 		// Test with facet fields requested but none returned
-		SearchResponse result = searchService.search("books", null, null, List.of("genre_s"), null, null, null);
+		SearchResponse result = searchService.search("books", null, null, List.of("genre_s"), null, null, null, null, null, null);
 
 		// Verify
 		assertNotNull(result);
@@ -214,7 +233,7 @@ class SearchServiceDirectTest {
 		when(solrClient.query(eq("books"), any(SolrQuery.class))).thenReturn(queryResponse);
 
 		// Test
-		SearchResponse result = searchService.search("books", null, null, List.of("genre_s"), null, null, null);
+		SearchResponse result = searchService.search("books", null, null, List.of("genre_s"), null, null, null, null, null, null);
 
 		// Verify
 		assertNotNull(result);
@@ -232,7 +251,7 @@ class SearchServiceDirectTest {
 
 			// Test
 			assertThrows(SolrServerException.class, () -> {
-				searchService.search("books", null, null, null, null, null, null);
+				searchService.search("books", null, null, null, null, null, null, null, null, null);
 			});
 		} catch (Exception e) {
 			fail("Test setup failed: " + e.getMessage());
@@ -272,7 +291,7 @@ class SearchServiceDirectTest {
 		List<Map<String, String>> sortClauses = List.of(Map.of("item", "price", "order", "desc"));
 
 		SearchResponse result = searchService.search("books", "mystery", filterQueries, facetFields2, sortClauses, 5,
-				10);
+				10, null, null, null);
 
 		// Verify
 		assertNotNull(result);

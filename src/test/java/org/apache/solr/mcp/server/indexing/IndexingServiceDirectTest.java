@@ -26,11 +26,13 @@ import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.response.UpdateResponse;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.mcp.server.indexing.documentcreator.*;
+import org.apache.solr.mcp.server.search.EmbeddingService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.ObjectProvider;
 
 @ExtendWith(MockitoExtension.class)
 class IndexingServiceDirectTest {
@@ -48,7 +50,24 @@ class IndexingServiceDirectTest {
 	void setUp() {
 		indexingDocumentCreator = new IndexingDocumentCreator(new XmlDocumentCreator(), new CsvDocumentCreator(),
 				new JsonDocumentCreator());
-		indexingService = new IndexingService(solrClient, indexingDocumentCreator);
+		ObjectProvider<org.springframework.ai.embedding.EmbeddingModel> emptyProvider = new ObjectProvider<>() {
+			@Override
+			public org.springframework.ai.embedding.EmbeddingModel getObject() {
+				throw new org.springframework.beans.factory.NoSuchBeanDefinitionException("No EmbeddingModel");
+			}
+
+			@Override
+			public org.springframework.ai.embedding.EmbeddingModel getIfAvailable() {
+				return null;
+			}
+
+			@Override
+			public org.springframework.ai.embedding.EmbeddingModel getIfUnique() {
+				return null;
+			}
+		};
+		EmbeddingService embeddingService = new EmbeddingService(emptyProvider);
+		indexingService = new IndexingService(solrClient, indexingDocumentCreator, embeddingService);
 	}
 
 	@Test
@@ -145,7 +164,7 @@ class IndexingServiceDirectTest {
 		// Create a spy on the indexingDocumentCreator and inject it into a new
 		// IndexingService
 		IndexingDocumentCreator indexingDocumentCreatorSpy = spy(indexingDocumentCreator);
-		IndexingService indexingServiceWithSpy = new IndexingService(solrClient, indexingDocumentCreatorSpy);
+		IndexingService indexingServiceWithSpy = new IndexingService(solrClient, indexingDocumentCreatorSpy, embeddingService);
 		IndexingService indexingServiceSpy = spy(indexingServiceWithSpy);
 
 		// Create mock documents that would be returned by createSchemalessDocuments
@@ -170,7 +189,7 @@ class IndexingServiceDirectTest {
 		doReturn(2).when(indexingServiceSpy).indexDocuments(anyString(), anyList());
 
 		// Call the method under test
-		indexingServiceSpy.indexJsonDocuments("test_collection", json);
+		indexingServiceSpy.indexJsonDocuments("test_collection", json, null, null);
 
 		// Verify that createSchemalessDocuments was called with the JSON string
 		verify(indexingDocumentCreatorSpy, times(1)).createSchemalessDocumentsFromJson(json);
@@ -188,7 +207,7 @@ class IndexingServiceDirectTest {
 		// Create a spy on the indexingDocumentCreator and inject it into a new
 		// IndexingService
 		IndexingDocumentCreator indexingDocumentCreatorSpy = spy(indexingDocumentCreator);
-		IndexingService indexingServiceWithSpy = new IndexingService(solrClient, indexingDocumentCreatorSpy);
+		IndexingService indexingServiceWithSpy = new IndexingService(solrClient, indexingDocumentCreatorSpy, embeddingService);
 		IndexingService indexingServiceSpy = spy(indexingServiceWithSpy);
 
 		// Mock the createSchemalessDocuments method to throw an exception
@@ -197,7 +216,7 @@ class IndexingServiceDirectTest {
 
 		// Call the method under test and verify it throws an exception
 		DocumentProcessingException exception = assertThrows(DocumentProcessingException.class, () -> {
-			indexingServiceSpy.indexJsonDocuments("test_collection", invalidJson);
+			indexingServiceSpy.indexJsonDocuments("test_collection", invalidJson, null, null);
 		});
 
 		// Verify the exception message

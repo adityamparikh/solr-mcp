@@ -92,7 +92,7 @@ class DistributedTracingTest {
 
 		// When: We execute a search operation
 		try {
-			searchService.search(collectionName, "*:*", null, null, null, null, null);
+			searchService.search(collectionName, "*:*", null, null, null, null, null, null, null, null);
 		} catch (Exception _) {
 			// Ignore errors - we're testing span creation, not business logic
 		}
@@ -116,7 +116,7 @@ class DistributedTracingTest {
 
 		// When: We execute a search with parameters
 		try {
-			searchService.search(collectionName, query, null, null, null, 0, 10);
+			searchService.search(collectionName, query, null, null, null, 0, 10, null, null, null);
 		} catch (Exception _) {
 			// Ignore errors
 		}
@@ -134,7 +134,7 @@ class DistributedTracingTest {
 	void shouldCreateSpanHierarchy() {
 		// When: We execute a complex operation that triggers multiple spans
 		try {
-			searchService.search("test_collection", "*:*", null, null, null, null, null);
+			searchService.search("test_collection", "*:*", null, null, null, null, null, null, null, null);
 		} catch (Exception _) {
 			// Ignore errors
 		}
@@ -150,7 +150,7 @@ class DistributedTracingTest {
 	void shouldSetCorrectSpanKind() {
 		// When: We execute a service method
 		try {
-			searchService.search("test_collection", "*:*", null, null, null, null, null);
+			searchService.search("test_collection", "*:*", null, null, null, null, null, null, null, null);
 		} catch (Exception _) {
 			// Ignore errors
 		}
@@ -166,7 +166,7 @@ class DistributedTracingTest {
 	void shouldIncludeServiceNameInResource() {
 		// When: We execute any operation
 		try {
-			searchService.search("test_collection", "*:*", null, null, null, null, null);
+			searchService.search("test_collection", "*:*", null, null, null, null, null, null, null, null);
 		} catch (Exception _) {
 			// Ignore errors
 		}
@@ -183,7 +183,7 @@ class DistributedTracingTest {
 	void shouldRecordSpanDuration() {
 		// When: We execute an operation
 		try {
-			searchService.search("test_collection", "*:*", null, null, null, null, null);
+			searchService.search("test_collection", "*:*", null, null, null, null, null, null, null, null);
 		} catch (Exception _) {
 			// Ignore errors
 		}

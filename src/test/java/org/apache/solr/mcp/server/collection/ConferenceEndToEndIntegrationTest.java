@@ -67,7 +67,7 @@ class ConferenceEndToEndIntegrationTest {
 		assertTrue(result.success(), "Collection creation should succeed: " + result.message());
 
 		String json = Files.readString(Path.of("mydata/devnexus-2026.json"));
-		indexingService.indexJsonDocuments(COLLECTION, json);
+		indexingService.indexJsonDocuments(COLLECTION, json, null, null);
 	}
 
 	@Test
@@ -90,14 +90,14 @@ class ConferenceEndToEndIntegrationTest {
 	@Test
 	@Order(3)
 	void searchAllDocumentsReturns116() throws Exception {
-		SearchResponse response = searchService.search(COLLECTION, "*:*", null, null, null, 0, 0);
+		SearchResponse response = searchService.search(COLLECTION, "*:*", null, null, null, 0, 0, null, null, null);
 		assertEquals(TOTAL_SESSIONS, response.numFound(), "Total results should be 116");
 	}
 
 	@Test
 	@Order(4)
 	void searchByTrackReturnsFilteredResults() throws Exception {
-		SearchResponse response = searchService.search(COLLECTION, "*:*", List.of("track:Workshop"), null, null, 0, 10);
+		SearchResponse response = searchService.search(COLLECTION, "*:*", List.of("track:Workshop"), null, null, 0, 10, null, null, null);
 		assertTrue(response.numFound() > 0, "Should find workshop sessions");
 		for (Map<String, Object> doc : response.documents()) {
 			Object track = doc.get("track");
@@ -109,7 +109,7 @@ class ConferenceEndToEndIntegrationTest {
 	@Test
 	@Order(5)
 	void searchByKeywordFindsMatchingSessions() throws Exception {
-		SearchResponse response = searchService.search(COLLECTION, "title:Spring", null, null, null, 0, 50);
+		SearchResponse response = searchService.search(COLLECTION, "title:Spring", null, null, null, 0, 50, null, null, null);
 		assertTrue(response.numFound() > 0, "Should find sessions with 'Spring' in the title");
 		for (Map<String, Object> doc : response.documents()) {
 			Object title = doc.get("title");
@@ -123,7 +123,7 @@ class ConferenceEndToEndIntegrationTest {
 	void facetByIdReturnsResults() throws Exception {
 		// Facet on 'id' which is always a string type in Solr's _default configset;
 		// schema-less text fields (track, day) are tokenized and return empty facets.
-		SearchResponse response = searchService.search(COLLECTION, "*:*", null, List.of("id"), null, 0, 0);
+		SearchResponse response = searchService.search(COLLECTION, "*:*", null, List.of("id"), null, 0, 0, null, null, null);
 		assertNotNull(response.facets(), "Facets should not be null");
 		assertTrue(response.facets().containsKey("id"), "Should have id facet");
 
@@ -136,8 +136,8 @@ class ConferenceEndToEndIntegrationTest {
 	@Test
 	@Order(7)
 	void paginationWorks() throws Exception {
-		SearchResponse page1 = searchService.search(COLLECTION, "*:*", null, null, null, 0, 10);
-		SearchResponse page2 = searchService.search(COLLECTION, "*:*", null, null, null, 10, 10);
+		SearchResponse page1 = searchService.search(COLLECTION, "*:*", null, null, null, 0, 10, null, null, null);
+		SearchResponse page2 = searchService.search(COLLECTION, "*:*", null, null, null, 10, 10, null, null, null);
 
 		assertEquals(10, page1.documents().size(), "Page 1 should have 10 documents");
 		assertEquals(10, page2.documents().size(), "Page 2 should have 10 documents");

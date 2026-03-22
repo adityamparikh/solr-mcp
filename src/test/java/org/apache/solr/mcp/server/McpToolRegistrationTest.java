@@ -39,9 +39,10 @@ class McpToolRegistrationTest {
 
 	@Test
 	void testSearchServiceHasToolAnnotation() throws NoSuchMethodException {
-		// Get the search method from SearchService
+		// Get the search method from SearchService with updated signature including
+		// mode, topK, vectorField
 		Method searchMethod = SearchService.class.getMethod("search", String.class, String.class, List.class,
-				List.class, List.class, Integer.class, Integer.class);
+				List.class, List.class, Integer.class, Integer.class, String.class, Integer.class, String.class);
 
 		// Verify it has the @McpTool annotation
 		assertTrue(searchMethod.isAnnotationPresent(McpTool.class),
@@ -56,9 +57,9 @@ class McpToolRegistrationTest {
 
 	@Test
 	void testSearchServiceToolParametersHaveAnnotations() throws NoSuchMethodException {
-		// Get the search method
+		// Get the search method with updated signature
 		Method searchMethod = SearchService.class.getMethod("search", String.class, String.class, List.class,
-				List.class, List.class, Integer.class, Integer.class);
+				List.class, List.class, Integer.class, Integer.class, String.class, Integer.class, String.class);
 
 		// Verify all parameters have @McpToolParam annotations
 		Parameter[] parameters = searchMethod.getParameters();
@@ -161,9 +162,9 @@ class McpToolRegistrationTest {
 
 	@Test
 	void testMcpToolParametersFollowConventions() throws NoSuchMethodException {
-		// Get the search method
+		// Get the search method with updated signature
 		Method searchMethod = SearchService.class.getMethod("search", String.class, String.class, List.class,
-				List.class, List.class, Integer.class, Integer.class);
+				List.class, List.class, Integer.class, Integer.class, String.class, Integer.class, String.class);
 
 		Parameter[] parameters = searchMethod.getParameters();
 
@@ -190,4 +191,5 @@ class McpToolRegistrationTest {
 			toolNames.add(toolName);
 		});
 	}
+
 }
