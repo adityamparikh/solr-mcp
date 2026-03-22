@@ -248,7 +248,7 @@ class CollectionServiceIntegrationTest {
 	void createCollection_createsAndListable() throws Exception {
 		String name = "mcp_test_create_" + System.currentTimeMillis();
 
-		CollectionCreationResult result = collectionService.createCollection(name, null, null, null);
+		CollectionCreationResult result = collectionService.createCollection(name, null, null, null, null);
 
 		assertTrue(result.success(), "Collection creation should succeed");
 		assertEquals(name, result.name(), "Result should contain the collection name");
@@ -258,5 +258,42 @@ class CollectionServiceIntegrationTest {
 		boolean collectionExists = collections.contains(name)
 				|| collections.stream().anyMatch(col -> col.startsWith(name + "_shard"));
 		assertTrue(collectionExists, "Newly created collection should appear in list (found: " + collections + ")");
+	}
+
+	@Test
+	void createCollection_withVectorDimension_addsVectorField() throws Exception {
+		String name = "mcp_test_vector_" + System.currentTimeMillis();
+
+		CollectionCreationResult result = collectionService.createCollection(name, null, null, null, 128);
+
+		assertTrue(result.success(), "Collection creation with vector field should succeed");
+		assertTrue(result.message().contains("vector field"),
+				"Message should mention vector field: " + result.message());
+
+		// Verify the vector field was added to the schema
+		org.apache.solr.client.solrj.request.schema.SchemaRequest.Fields fieldsReq = new org.apache.solr.client.solrj.request.schema.SchemaRequest.Fields();
+		var fieldsResponse = fieldsReq.process(solrClient, name);
+		boolean hasVectorField = fieldsResponse.getFields().stream()
+				.anyMatch(f -> CollectionService.DEFAULT_VECTOR_FIELD_NAME.equals(f.get("name")));
+		assertTrue(hasVectorField, "Collection should have a vector field named '"
+				+ CollectionService.DEFAULT_VECTOR_FIELD_NAME + "'");
+	}
+
+	@Test
+	void createCollection_withoutVectorDimension_noVectorField() throws Exception {
+		String name = "mcp_test_novector_" + System.currentTimeMillis();
+
+		CollectionCreationResult result = collectionService.createCollection(name, null, null, null, null);
+
+		assertTrue(result.success());
+		assertFalse(result.message().contains("vector field"),
+				"Message should not mention vector field: " + result.message());
+
+		// Verify no vector field exists
+		org.apache.solr.client.solrj.request.schema.SchemaRequest.Fields fieldsReq = new org.apache.solr.client.solrj.request.schema.SchemaRequest.Fields();
+		var fieldsResponse = fieldsReq.process(solrClient, name);
+		boolean hasVectorField = fieldsResponse.getFields().stream()
+				.anyMatch(f -> CollectionService.DEFAULT_VECTOR_FIELD_NAME.equals(f.get("name")));
+		assertFalse(hasVectorField, "Collection should NOT have a vector field");
 	}
 }

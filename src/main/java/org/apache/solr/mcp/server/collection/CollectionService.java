@@ -26,7 +26,9 @@ import io.micrometer.observation.annotation.Observed;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrRequest;
@@ -36,6 +38,7 @@ import org.apache.solr.client.solrj.request.CollectionAdminRequest;
 import org.apache.solr.client.solrj.request.CoreAdminRequest;
 import org.apache.solr.client.solrj.request.GenericSolrRequest;
 import org.apache.solr.client.solrj.request.LukeRequest;
+import org.apache.solr.client.solrj.request.schema.SchemaRequest;
 import org.apache.solr.client.solrj.response.CollectionAdminResponse;
 import org.apache.solr.client.solrj.response.CoreAdminResponse;
 import org.apache.solr.client.solrj.response.LukeResponse;
@@ -260,6 +263,15 @@ public class CollectionService {
 
 	/** Default replication factor for new collections */
 	private static final int DEFAULT_REPLICATION_FACTOR = 1;
+
+	/** Default vector field name added to the schema when vectorDimension is specified */
+	static final String DEFAULT_VECTOR_FIELD_NAME = "vector";
+
+	/** Default similarity function for dense vector fields */
+	private static final String DEFAULT_SIMILARITY_FUNCTION = "cosine";
+
+	/** Default KNN algorithm for dense vector fields */
+	private static final String DEFAULT_KNN_ALGORITHM = "hnsw";
 
 	/** Error message for blank collection name validation */
 	private static final String BLANK_COLLECTION_NAME_ERROR = "Collection name must not be blank";
@@ -1058,16 +1070,16 @@ public class CollectionService {
 	 * Creates a new Solr collection (SolrCloud) or core (standalone Solr).
 	 *
 	 * <p>
-	 * Automatically detects the deployment type and uses the appropriate API:
-	 *
-	 * <p>
 	 * Uses the Collections API, which works with any SolrClient pointing to a
 	 * SolrCloud deployment.
 	 *
 	 * <p>
 	 * Optional parameters default to sensible values when not provided by the MCP
 	 * client: configSet defaults to {@value #DEFAULT_CONFIGSET}, numShards and
-	 * replicationFactor both default to 1.
+	 * replicationFactor both default to 1. By default, no vector field is created
+	 * (keyword-only collection). If {@code vectorDimension} is provided, a
+	 * {@code DenseVectorField} type and a {@code vector} field are added to the
+	 * schema after collection creation, enabling semantic/hybrid search.
 	 *
 	 * @param name
 	 *            the name of the collection to create (must not be blank)
@@ -1078,9 +1090,14 @@ public class CollectionService {
 	 *            number of shards (optional, defaults to 1)
 	 * @param replicationFactor
 	 *            replication factor (optional, defaults to 1)
+	 * @param vectorDimension
+	 *            if provided, adds a DenseVectorField to the schema with this
+	 *            dimension (e.g., 1536 for OpenAI, 768 for many open-source
+	 *            models). If omitted, no vector field is created (keyword-only).
 	 * @return result describing the outcome of the creation operation
 	 * @throws IllegalArgumentException
-	 *             if the collection name is blank
+	 *             if the collection name is blank or vectorDimension is not
+	 *             positive
 	 * @throws SolrServerException
 	 *             if Solr returns an error
 	 * @throws IOException
@@ -1088,16 +1105,23 @@ public class CollectionService {
 	 */
 	@PreAuthorize("isAuthenticated()")
 	@McpTool(name = "create-collection", description = "Create a new Solr collection. "
-			+ "configSet defaults to _default, numShards and replicationFactor default to 1.")
+			+ "configSet defaults to _default, numShards and replicationFactor default to 1. "
+			+ "If vectorDimension is provided, a DenseVectorField is added to the schema for semantic search. "
+			+ "If omitted, the collection is keyword-only.")
 	public CollectionCreationResult createCollection(
 			@McpToolParam(description = "Name of the collection to create") String name,
 			@McpToolParam(description = "Configset name. Defaults to _default.", required = false) String configSet,
 			@McpToolParam(description = "Number of shards (SolrCloud only). Defaults to 1.", required = false) Integer numShards,
-			@McpToolParam(description = "Replication factor (SolrCloud only). Defaults to 1.", required = false) Integer replicationFactor)
+			@McpToolParam(description = "Replication factor (SolrCloud only). Defaults to 1.", required = false) Integer replicationFactor,
+			@McpToolParam(description = "Vector dimension for semantic search (e.g. 1536 for OpenAI, 768 for many open-source models). "
+					+ "If omitted, no vector field is created and the collection is keyword-only.", required = false) Integer vectorDimension)
 			throws SolrServerException, IOException {
 
 		if (name == null || name.isBlank()) {
 			throw new IllegalArgumentException(BLANK_COLLECTION_NAME_ERROR);
+		}
+		if (vectorDimension != null && vectorDimension <= 0) {
+			throw new IllegalArgumentException("vectorDimension must be a positive integer, got: " + vectorDimension);
 		}
 
 		String effectiveConfigSet = configSet != null ? configSet : DEFAULT_CONFIGSET;
@@ -1107,6 +1131,42 @@ public class CollectionService {
 		CollectionAdminRequest.createCollection(name, effectiveConfigSet, effectiveShards, effectiveRf)
 				.process(solrClient);
 
-		return new CollectionCreationResult(name, true, "Collection created successfully", new Date());
+		if (vectorDimension != null) {
+			addVectorFieldToSchema(name, vectorDimension);
+		}
+
+		String message = vectorDimension != null
+				? "Collection created successfully with vector field (dimension=" + vectorDimension + ")"
+				: "Collection created successfully";
+		return new CollectionCreationResult(name, true, message, new Date());
+	}
+
+	/**
+	 * Adds a DenseVectorField type and field to the collection's schema.
+	 */
+	private void addVectorFieldToSchema(String collection, int vectorDimension)
+			throws SolrServerException, IOException {
+		String fieldTypeName = "knn_vector_" + vectorDimension;
+
+		// Add the field type
+		Map<String, Object> fieldTypeAttributes = new LinkedHashMap<>();
+		fieldTypeAttributes.put("name", fieldTypeName);
+		fieldTypeAttributes.put("class", "solr.DenseVectorField");
+		fieldTypeAttributes.put("vectorDimension", vectorDimension);
+		fieldTypeAttributes.put("similarityFunction", DEFAULT_SIMILARITY_FUNCTION);
+		fieldTypeAttributes.put("knnAlgorithm", DEFAULT_KNN_ALGORITHM);
+
+		SchemaRequest.AddFieldType addFieldType = new SchemaRequest.AddFieldType(fieldTypeAttributes);
+		addFieldType.process(solrClient, collection);
+
+		// Add the vector field
+		Map<String, Object> fieldAttributes = new LinkedHashMap<>();
+		fieldAttributes.put("name", DEFAULT_VECTOR_FIELD_NAME);
+		fieldAttributes.put("type", fieldTypeName);
+		fieldAttributes.put("indexed", true);
+		fieldAttributes.put("stored", true);
+
+		SchemaRequest.AddField addField = new SchemaRequest.AddField(fieldAttributes);
+		addField.process(solrClient, collection);
 	}
 }

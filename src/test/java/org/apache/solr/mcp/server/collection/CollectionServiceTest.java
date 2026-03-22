@@ -902,19 +902,20 @@ class CollectionServiceTest {
 		when(cloudClient.request(any(), any())).thenReturn(new NamedList<>());
 
 		CollectionService service = new CollectionService(cloudClient, objectMapper);
-		CollectionCreationResult result = service.createCollection("new_collection", "_default", 1, 1);
+		CollectionCreationResult result = service.createCollection("new_collection", "_default", 1, 1, null);
 
 		assertNotNull(result);
 		assertTrue(result.success());
 		assertEquals("new_collection", result.name());
 		assertNotNull(result.createdAt());
+		assertEquals("Collection created successfully", result.message());
 	}
 
 	@Test
 	void createCollection_success_standaloneClient() throws Exception {
 		when(solrClient.request(any(), isNull())).thenReturn(new NamedList<>());
 
-		CollectionCreationResult result = collectionService.createCollection("new_core", null, null, null);
+		CollectionCreationResult result = collectionService.createCollection("new_core", null, null, null, null);
 
 		assertNotNull(result);
 		assertTrue(result.success());
@@ -928,20 +929,46 @@ class CollectionServiceTest {
 		when(cloudClient.request(any(), any())).thenReturn(new NamedList<>());
 
 		CollectionService service = new CollectionService(cloudClient, objectMapper);
-		CollectionCreationResult result = service.createCollection("defaults_collection", null, null, null);
+		CollectionCreationResult result = service.createCollection("defaults_collection", null, null, null, null);
 
 		assertTrue(result.success());
 		assertEquals("defaults_collection", result.name());
 	}
 
 	@Test
+	void createCollection_withVectorDimension() throws Exception {
+		CloudSolrClient cloudClient = mock(CloudSolrClient.class);
+		when(cloudClient.request(any(), any())).thenReturn(new NamedList<>());
+
+		CollectionService service = new CollectionService(cloudClient, objectMapper);
+		CollectionCreationResult result = service.createCollection("vector_collection", null, null, null, 1536);
+
+		assertTrue(result.success());
+		assertEquals("vector_collection", result.name());
+		assertTrue(result.message().contains("vector field"));
+		assertTrue(result.message().contains("1536"));
+		// Verify 3 requests were made: createCollection + addFieldType + addField
+		verify(cloudClient, times(3)).request(any(), any());
+	}
+
+	@Test
+	void createCollection_invalidVectorDimension_throwsIllegalArgument() {
+		assertThrows(IllegalArgumentException.class,
+				() -> collectionService.createCollection("bad_dim", null, null, null, 0));
+		assertThrows(IllegalArgumentException.class,
+				() -> collectionService.createCollection("bad_dim", null, null, null, -1));
+	}
+
+	@Test
 	void createCollection_blankName_throwsIllegalArgument() {
-		assertThrows(IllegalArgumentException.class, () -> collectionService.createCollection("   ", null, null, null));
+		assertThrows(IllegalArgumentException.class,
+				() -> collectionService.createCollection("   ", null, null, null, null));
 	}
 
 	@Test
 	void createCollection_emptyName_throwsIllegalArgument() {
-		assertThrows(IllegalArgumentException.class, () -> collectionService.createCollection("", null, null, null));
+		assertThrows(IllegalArgumentException.class,
+				() -> collectionService.createCollection("", null, null, null, null));
 	}
 
 	@Test
@@ -949,6 +976,6 @@ class CollectionServiceTest {
 		when(solrClient.request(any(), isNull())).thenThrow(new SolrServerException("Solr error"));
 
 		assertThrows(SolrServerException.class,
-				() -> collectionService.createCollection("fail_core", null, null, null));
+				() -> collectionService.createCollection("fail_core", null, null, null, null));
 	}
 }

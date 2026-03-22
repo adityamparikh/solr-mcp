@@ -109,6 +109,7 @@ An AI assistant indexes documents (JSON, CSV, or XML format) and sets `generateE
 - **FR-013**: All new parameters (`mode`, `generateEmbeddings`, `textFields`, `topK`, vector field name) MUST be optional with backward-compatible defaults; no existing call signatures are broken.
 - **FR-014**: The `search` and `index` tools MUST enforce the same authentication requirements as before; the new parameters do not alter security behavior.
 - **FR-015**: The `search` tool in semantic or hybrid mode MUST report `numFound` as the count of results actually returned (≤ topK), not as a total corpus-wide match count. The tool description MUST document this behavioral difference from keyword mode.
+- **FR-016**: The `create-collection` tool MUST accept an optional `vectorDimension` parameter. When provided, the tool MUST add a `DenseVectorField` field type and a `vector` field to the collection's schema after creation, enabling semantic/hybrid search. When omitted (the default), no vector field is created and the collection is keyword-only. The `vectorDimension` MUST be validated as a positive integer.
 
 ### Key Entities
 
