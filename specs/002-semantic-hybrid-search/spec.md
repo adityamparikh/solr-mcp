@@ -15,6 +15,10 @@
 - Q: Should embedding-aware document indexing be a new separate tool or an extension of the existing `index` tool? → A: Extension of the existing `index` tool via an optional `generateEmbeddings` flag, consistent with the search tool surface decision. See Constraints & Tradeoffs for full rationale.
 - Q: Should `generateEmbeddings` apply only to `index-json-documents`, or to all three indexing tools (JSON, CSV, XML)? → A: All three tools. All three format-specific parsers (`JsonDocumentCreator`, `CsvDocumentCreator`, `XmlDocumentCreator`) produce `SolrInputDocument` objects with field names preserved (JSON keys, CSV column headers, XML element names). The `textFields` concatenation approach works identically for all three formats. Restricting to JSON-only would be an arbitrary limitation that forces users to convert data formats unnecessarily.
 
+### Session 2026-03-22
+
+- Q: Is `SolrVectorStore` (Spring AI `VectorStore` implementation) a required deliverable, or just an implementation detail? → A: **Required deliverable.** The `SolrVectorStore` is the foundation that enables Spring AI's advisor API (`QuestionAnswerAdvisor`, `RetrievalAugmentationAdvisor`) for RAG workflows. Without it, consumers are limited to the MCP tool surface and cannot use Solr as a vector database in standard Spring AI applications. Added as FR-008a/b/c and as a Key Entity.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Zero-Configuration Best-Quality Search (Priority: P1)
@@ -94,6 +98,9 @@ An AI assistant indexes documents (JSON, CSV, or XML format) and sets `generateE
 - **FR-006**: When `generateEmbeddings=true`, each indexing tool MUST generate embedding vectors from the specified `textFields` and store them alongside each document in the collection, regardless of the input format (JSON, CSV, or XML).
 - **FR-007**: The `search` tool called with an explicit `mode=semantic` or `mode=hybrid`, and the `index` tool called with `generateEmbeddings=true`, MUST return a clear, actionable error message when no embedding model is configured. The smart default MUST NOT surface this error — it silently falls back to `keyword`.
 - **FR-008**: The system MUST start and all existing tool calls MUST function correctly when no embedding model is configured.
+- **FR-008a**: The system MUST implement Spring AI's `VectorStore` interface as `SolrVectorStore` (extending `AbstractObservationVectorStore`), enabling Spring AI's advisor API (e.g., `QuestionAnswerAdvisor`, `RetrievalAugmentationAdvisor`) to use Solr as a vector database backend. This is the foundation on which semantic search capabilities are built — MCP tools delegate to `SolrVectorStore` rather than implementing vector operations directly against `SolrClient`.
+- **FR-008b**: The system MUST provide a `VectorStoreFactory` that creates and caches `SolrVectorStore` instances per Solr collection using a thread-safe cache, since MCP tools accept `collection` as a per-call parameter and each `SolrVectorStore` is bound to a single collection at construction time.
+- **FR-008c**: The `SolrVectorStore` MUST convert Spring AI `Filter.Expression` to Solr query syntax (EQ, NE, GT, GTE, LT, LTE, AND, OR, IN) with automatic metadata prefix handling, so that Spring AI advisor filter expressions work transparently against Solr.
 - **FR-009**: The system MUST support any compliant embedding provider configurable at startup; switching providers MUST require only configuration changes, not code changes.
 - **FR-010**: The `search` tool MUST accept an optional configurable vector field name parameter to support collections with custom schema configurations when executing semantic or hybrid search.
 - **FR-011**: The `search` tool in semantic or hybrid mode MUST support optional filter criteria to restrict results.
@@ -110,6 +117,8 @@ An AI assistant indexes documents (JSON, CSV, or XML format) and sets `generateE
 - **Vector Field**: A specially configured field in a Solr collection schema that stores embeddings and supports approximate nearest-neighbor search.
 - **Embedding Provider**: An external service or local model that converts text into embeddings; configured once at server startup and available to the smart default, semantic/hybrid search modes, and the `generateEmbeddings` indexing flag.
 - **Search Response**: The unified result format returned by the `search` tool across all modes — a ranked list of documents with optional facet counts and a result count. For keyword mode, the result count reflects total corpus matches; for semantic and hybrid modes, it reflects the number of results returned (≤ topK).
+- **SolrVectorStore**: The Spring AI `VectorStore` implementation for Apache Solr. Extends `AbstractObservationVectorStore` to provide Micrometer observation support. Handles embedding generation, KNN query construction, filter expression conversion, and document marshaling between Spring AI `Document` and Solr `SolrInputDocument` formats. Configurable via `SolrVectorStoreOptions`. This is the foundational component that enables Spring AI's advisor API (RAG workflows) to use Solr as a vector database.
+- **VectorStoreFactory**: A per-collection cache of `SolrVectorStore` instances. Since each `SolrVectorStore` is bound to a single Solr collection, and MCP tools accept `collection` as a per-call parameter, the factory uses `ConcurrentHashMap.computeIfAbsent` for atomic, thread-safe instance creation and reuse.
 - **Hybrid Rank Score**: A combined relevance score derived from a document's position in both the keyword and semantic result lists, used to produce the final merged ordering in hybrid mode.
 
 ## Success Criteria *(mandatory)*
