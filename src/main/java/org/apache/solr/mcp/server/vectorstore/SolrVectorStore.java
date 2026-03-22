@@ -27,13 +27,16 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrRequest;
 import org.apache.solr.client.solrj.SolrServerException;
+import org.apache.solr.client.solrj.request.schema.SchemaRequest;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.client.solrj.response.UpdateResponse;
+import org.apache.solr.client.solrj.response.schema.SchemaResponse;
 import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.mcp.server.util.SolrQueryUtils;
@@ -116,6 +119,12 @@ public class SolrVectorStore extends AbstractObservationVectorStore {
 
 	private final boolean initializeSchema;
 
+	/**
+	 * Cached result of vector field detection. {@code null} means not yet checked,
+	 * {@code Boolean.TRUE/FALSE} means checked.
+	 */
+	private final AtomicReference<Boolean> vectorFieldAvailable = new AtomicReference<>();
+
 	protected SolrVectorStore(Builder builder) {
 		super(builder);
 
@@ -126,6 +135,12 @@ public class SolrVectorStore extends AbstractObservationVectorStore {
 		this.collection = builder.collection;
 		this.options = builder.options != null ? builder.options : SolrVectorStoreOptions.defaults();
 		this.initializeSchema = builder.initializeSchema;
+
+		// Allow pre-setting the vector field availability (e.g., from tests or when
+		// the caller already knows the schema)
+		if (builder.forceVectorFieldAvailable != null) {
+			this.vectorFieldAvailable.set(builder.forceVectorFieldAvailable);
+		}
 
 		if (this.initializeSchema) {
 			initializeSchema();
@@ -150,27 +165,34 @@ public class SolrVectorStore extends AbstractObservationVectorStore {
 	@Override
 	public void doAdd(List<Document> documents) {
 		try {
-			List<Document> documentsWithoutEmbeddings = documents.stream().filter(doc -> {
-				Object embedding = doc.getMetadata().get("embedding");
-				return embedding == null || !(embedding instanceof float[])
-						|| ((float[]) embedding).length == 0;
-			}).toList();
+			boolean vectorEnabled = hasVectorField();
 
-			if (!documentsWithoutEmbeddings.isEmpty()) {
-				List<String> texts = documentsWithoutEmbeddings.stream().map(Document::getText).toList();
+			if (vectorEnabled) {
+				List<Document> documentsWithoutEmbeddings = documents.stream().filter(doc -> {
+					Object embedding = doc.getMetadata().get("embedding");
+					return embedding == null || !(embedding instanceof float[])
+							|| ((float[]) embedding).length == 0;
+				}).toList();
 
-				EmbeddingResponse embeddingResponse = this.embeddingModel.embedForResponse(texts);
+				if (!documentsWithoutEmbeddings.isEmpty()) {
+					List<String> texts = documentsWithoutEmbeddings.stream().map(Document::getText).toList();
 
-				if (embeddingResponse.getResults().size() != documentsWithoutEmbeddings.size()) {
-					throw new RuntimeException("Expected " + documentsWithoutEmbeddings.size()
-							+ " embeddings but got " + embeddingResponse.getResults().size());
+					EmbeddingResponse embeddingResponse = this.embeddingModel.embedForResponse(texts);
+
+					if (embeddingResponse.getResults().size() != documentsWithoutEmbeddings.size()) {
+						throw new RuntimeException("Expected " + documentsWithoutEmbeddings.size()
+								+ " embeddings but got " + embeddingResponse.getResults().size());
+					}
+
+					for (int i = 0; i < documentsWithoutEmbeddings.size(); i++) {
+						Document doc = documentsWithoutEmbeddings.get(i);
+						float[] embedding = embeddingResponse.getResults().get(i).getOutput();
+						doc.getMetadata().put("embedding", embedding);
+					}
 				}
-
-				for (int i = 0; i < documentsWithoutEmbeddings.size(); i++) {
-					Document doc = documentsWithoutEmbeddings.get(i);
-					float[] embedding = embeddingResponse.getResults().get(i).getOutput();
-					doc.getMetadata().put("embedding", embedding);
-				}
+			}
+			else {
+				log.debug("No vector field in collection '{}' — indexing without embeddings", collection);
 			}
 
 			List<SolrInputDocument> solrDocs = documents.stream().map(this::toSolrDocument).collect(toList());
@@ -206,6 +228,10 @@ public class SolrVectorStore extends AbstractObservationVectorStore {
 				throw new IllegalArgumentException("Search query cannot be null or empty");
 			}
 
+			if (!hasVectorField()) {
+				return executeKeywordFallback(request);
+			}
+
 			EmbeddingResponse embeddingResponse = this.embeddingModel
 					.embedForResponse(Collections.singletonList(request.getQuery()));
 
@@ -224,15 +250,7 @@ public class SolrVectorStore extends AbstractObservationVectorStore {
 				query.setRows(request.getTopK());
 			}
 
-			if (request.getFilterExpression() != null) {
-				String solrFilter = convertFilterToSolrQuery(request.getFilterExpression());
-				if (solrFilter != null && !solrFilter.isEmpty()) {
-					query.addFilterQuery(solrFilter);
-				}
-			}
-
-			query.setFields(options.idFieldName(), options.contentFieldName(), "score",
-					options.metadataPrefix() + "*");
+			applyFiltersAndFields(query, request);
 
 			query.setParam("qt", "/select");
 			QueryResponse response = solrClient.query(collection, query, SolrRequest.METHOD.POST);
@@ -259,6 +277,40 @@ public class SolrVectorStore extends AbstractObservationVectorStore {
 		}
 	}
 
+	/**
+	 * Falls back to keyword search when the collection has no vector field.
+	 * Uses the query text as a standard Solr query against the content field.
+	 */
+	private List<Document> executeKeywordFallback(SearchRequest request) throws SolrServerException, IOException {
+		log.info("No vector field in collection '{}' — falling back to keyword search", collection);
+
+		SolrQuery query = new SolrQuery(options.contentFieldName() + ":" + request.getQuery());
+		if (request.getTopK() > 0) {
+			query.setRows(request.getTopK());
+		}
+
+		applyFiltersAndFields(query, request);
+
+		QueryResponse response = solrClient.query(collection, query, SolrRequest.METHOD.POST);
+		List<SolrDocument> results = response.getResults();
+
+		log.debug("Keyword fallback search in collection '{}' returned {} results", collection, results.size());
+
+		return results.stream().map(solrDoc -> toDocument(solrDoc, -1)).filter(Objects::nonNull).toList();
+	}
+
+	private void applyFiltersAndFields(SolrQuery query, SearchRequest request) {
+		if (request.getFilterExpression() != null) {
+			String solrFilter = convertFilterToSolrQuery(request.getFilterExpression());
+			if (solrFilter != null && !solrFilter.isEmpty()) {
+				query.addFilterQuery(solrFilter);
+			}
+		}
+
+		query.setFields(options.idFieldName(), options.contentFieldName(), "score",
+				options.metadataPrefix() + "*");
+	}
+
 	@Override
 	public VectorStoreObservationContext.Builder createObservationContextBuilder(String operationType) {
 		return VectorStoreObservationContext.builder("solr", operationType).collectionName(this.collection)
@@ -273,6 +325,48 @@ public class SolrVectorStore extends AbstractObservationVectorStore {
 
 	private void initializeSchema() {
 		log.debug("Schema initialization not implemented - assuming schema exists in Solr");
+	}
+
+	/**
+	 * Checks whether the configured vector field exists in the collection's schema.
+	 * The result is cached after the first successful check.
+	 *
+	 * @return {@code true} if the vector field exists, {@code false} otherwise
+	 */
+	boolean hasVectorField() {
+		Boolean cached = vectorFieldAvailable.get();
+		if (cached != null) {
+			return cached;
+		}
+		boolean result = detectVectorField();
+		vectorFieldAvailable.set(result);
+		return result;
+	}
+
+	private boolean detectVectorField() {
+		try {
+			SchemaRequest.Fields fieldsRequest = new SchemaRequest.Fields();
+			SchemaResponse.FieldsResponse response = fieldsRequest.process(solrClient, collection);
+			List<Map<String, Object>> fields = response.getFields();
+			if (fields != null) {
+				for (Map<String, Object> field : fields) {
+					if (options.vectorFieldName().equals(field.get("name"))) {
+						log.debug("Vector field '{}' found in collection '{}'", options.vectorFieldName(),
+								collection);
+						return true;
+					}
+				}
+			}
+			log.info("Vector field '{}' not found in collection '{}' — falling back to keyword-only mode",
+					options.vectorFieldName(), collection);
+			return false;
+		}
+		catch (Exception e) {
+			log.warn("Failed to check schema for vector field '{}' in collection '{}': {}. "
+					+ "Assuming no vector field — falling back to keyword-only mode", options.vectorFieldName(),
+					collection, e.getMessage());
+			return false;
+		}
 	}
 
 	String convertFilterToSolrQuery(Filter.Expression filterExpression) {
@@ -439,6 +533,8 @@ public class SolrVectorStore extends AbstractObservationVectorStore {
 
 		private boolean initializeSchema = false;
 
+		private Boolean forceVectorFieldAvailable;
+
 		private Builder(SolrClient solrClient, String collection, EmbeddingModel embeddingModel) {
 			super(embeddingModel);
 			this.solrClient = solrClient;
@@ -452,6 +548,19 @@ public class SolrVectorStore extends AbstractObservationVectorStore {
 
 		public Builder initializeSchema(boolean initializeSchema) {
 			this.initializeSchema = initializeSchema;
+			return this;
+		}
+
+		/**
+		 * Pre-sets whether the vector field is available, bypassing schema detection.
+		 * Useful for testing or when the caller already knows the schema.
+		 *
+		 * @param available
+		 *            {@code true} if vector field exists, {@code false} if not
+		 * @return this builder
+		 */
+		public Builder forceVectorFieldAvailable(boolean available) {
+			this.forceVectorFieldAvailable = available;
 			return this;
 		}
 

@@ -64,7 +64,7 @@ class SolrVectorStoreTest {
 	@BeforeEach
 	void setUp() {
 		vectorStore = SolrVectorStore.builder(solrClient, COLLECTION, embeddingModel)
-				.options(SolrVectorStoreOptions.defaults()).build();
+				.options(SolrVectorStoreOptions.defaults()).forceVectorFieldAvailable(true).build();
 	}
 
 	@Test
@@ -324,5 +324,58 @@ class SolrVectorStoreTest {
 	void testObservationContextBuilder() {
 		var contextBuilder = vectorStore.createObservationContextBuilder("query");
 		assertThat(contextBuilder).isNotNull();
+	}
+
+	@Test
+	void testAddWithoutVectorFieldSkipsEmbeddings() throws Exception {
+		SolrVectorStore noVectorStore = SolrVectorStore.builder(solrClient, COLLECTION, embeddingModel)
+				.options(SolrVectorStoreOptions.defaults()).forceVectorFieldAvailable(false).build();
+
+		when(solrClient.add(eq(COLLECTION), anyList(), anyInt())).thenReturn(new UpdateResponse());
+
+		Document doc = new Document("1", "Test content", Map.of("category", "test"));
+		noVectorStore.add(List.of(doc));
+
+		// Should NOT call embeddingModel since no vector field
+		org.mockito.Mockito.verifyNoInteractions(embeddingModel);
+		verify(solrClient).add(eq(COLLECTION), anyList(), eq(1000));
+		verify(solrClient).commit(COLLECTION);
+	}
+
+	@Test
+	void testSimilaritySearchFallsBackToKeywordWhenNoVectorField() throws Exception {
+		SolrVectorStore noVectorStore = SolrVectorStore.builder(solrClient, COLLECTION, embeddingModel)
+				.options(SolrVectorStoreOptions.defaults()).forceVectorFieldAvailable(false).build();
+
+		SolrDocumentList docs = new SolrDocumentList();
+		SolrDocument solrDoc = new SolrDocument();
+		solrDoc.addField("id", "1");
+		solrDoc.addField("content", "Keyword matched content");
+		solrDoc.addField("score", 1.5f);
+		docs.add(solrDoc);
+		docs.setNumFound(1);
+
+		QueryResponse queryResponse = org.mockito.Mockito.mock(QueryResponse.class);
+		when(queryResponse.getResults()).thenReturn(docs);
+		when(solrClient.query(eq(COLLECTION), any(SolrQuery.class), eq(SolrRequest.METHOD.POST)))
+				.thenReturn(queryResponse);
+
+		List<Document> results = noVectorStore
+				.similaritySearch(SearchRequest.builder().query("test query").topK(5).build());
+
+		// Should NOT call embeddingModel since falling back to keyword
+		org.mockito.Mockito.verifyNoInteractions(embeddingModel);
+		assertThat(results).hasSize(1);
+		assertThat(results.getFirst().getId()).isEqualTo("1");
+		assertThat(results.getFirst().getText()).isEqualTo("Keyword matched content");
+	}
+
+	@Test
+	void testHasVectorFieldDefaultsToFalseOnSchemaError() {
+		// Without forceVectorFieldAvailable, the mock SolrClient won't handle
+		// SchemaRequest and hasVectorField() should catch the exception and return false
+		SolrVectorStore unconfiguredStore = SolrVectorStore.builder(solrClient, COLLECTION, embeddingModel)
+				.options(SolrVectorStoreOptions.defaults()).build();
+		assertThat(unconfiguredStore.hasVectorField()).isFalse();
 	}
 }

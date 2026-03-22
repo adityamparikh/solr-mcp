@@ -234,12 +234,76 @@ class SolrVectorStoreIntegrationTest {
 		assertThat(nativeClient.get()).isInstanceOf(SolrClient.class);
 	}
 
+	@Test
+	void addWithoutVectorFieldIndexesWithoutEmbeddings() throws Exception {
+		// Create a collection WITHOUT a vector field
+		String noVectorCollection = "no_vector_" + System.currentTimeMillis();
+		try {
+			solrContainer.execInContainer("/opt/solr/bin/solr", "create_collection", "-c", noVectorCollection,
+					"-d", "_default");
+		}
+		catch (Exception ignored) {
+		}
+		Thread.sleep(500);
+
+		SolrVectorStore noVectorStore = SolrVectorStore
+				.builder(solrClient, noVectorCollection, (EmbeddingModel) TestConfig.mockEmbeddingModel())
+				.options(SolrVectorStoreOptions.builder().vectorDimension(VECTOR_DIMENSION).build()).build();
+
+		// hasVectorField should detect missing vector field
+		assertThat(noVectorStore.hasVectorField()).isFalse();
+
+		// Add documents — should succeed without generating embeddings
+		Document doc = new Document("1", "Test document without embeddings", Map.of("category", "test"));
+		noVectorStore.add(List.of(doc));
+
+		await().untilAsserted(() -> {
+			long count = solrClient.query(noVectorCollection, new SolrQuery("*:*")).getResults().getNumFound();
+			assertThat(count).isEqualTo(1);
+		});
+	}
+
+	@Test
+	void searchFallsBackToKeywordWithoutVectorField() throws Exception {
+		// Create a collection WITHOUT a vector field
+		String noVectorCollection = "no_vector_search_" + System.currentTimeMillis();
+		try {
+			solrContainer.execInContainer("/opt/solr/bin/solr", "create_collection", "-c", noVectorCollection,
+					"-d", "_default");
+		}
+		catch (Exception ignored) {
+		}
+		Thread.sleep(500);
+
+		SolrVectorStore noVectorStore = SolrVectorStore
+				.builder(solrClient, noVectorCollection, (EmbeddingModel) TestConfig.mockEmbeddingModel())
+				.options(SolrVectorStoreOptions.builder().vectorDimension(VECTOR_DIMENSION).build()).build();
+
+		// Index a document without embeddings
+		Document doc = new Document("1", "Spring AI provides abstractions for AI models",
+				Map.of("category", "AI"));
+		noVectorStore.add(List.of(doc));
+
+		// Wait for indexing
+		await().untilAsserted(() -> {
+			long count = solrClient.query(noVectorCollection, new SolrQuery("*:*")).getResults().getNumFound();
+			assertThat(count).isEqualTo(1);
+		});
+
+		// Similarity search should fall back to keyword search
+		List<Document> results = noVectorStore
+				.similaritySearch(SearchRequest.builder().query("Spring").topK(5).build());
+
+		assertThat(results).hasSizeGreaterThanOrEqualTo(1);
+		assertThat(results.getFirst().getText()).contains("Spring AI");
+	}
+
 	@TestConfiguration
 	static class TestConfig {
 
 		@Bean
 		@Primary
-		EmbeddingModel mockEmbeddingModel() {
+		static EmbeddingModel mockEmbeddingModel() {
 			return new DeterministicEmbeddingModel(VECTOR_DIMENSION);
 		}
 
