@@ -48,6 +48,19 @@ Four service classes expose MCP tools via `@McpTool` annotations:
 - **CollectionService** (`metadata/`) - List collections, get stats, health checks
 - **SchemaService** (`metadata/`) - Schema introspection
 
+### Spring AI VectorStore (`vectorstore/`)
+
+Implements Spring AI's `VectorStore` interface for Solr, enabling the advisor API (e.g., `QuestionAnswerAdvisor`, `RetrievalAugmentationAdvisor`) for RAG workflows:
+
+- **SolrVectorStore** - Extends `AbstractObservationVectorStore` with KNN search, filter expression → Solr query conversion, batch embedding, and Micrometer observation support
+- **SolrVectorStoreOptions** - Configurable field names (`id`, `content`, `vector`), metadata prefix, and vector dimension (record with builder)
+- **VectorStoreConfig** - Spring `@Configuration` that creates `VectorStore` bean (conditional on `EmbeddingModel`)
+- **VectorStoreFactory** - Per-collection `VectorStore` caching via `ConcurrentHashMap`
+
+Utility classes in `util/`:
+- **VectorFormatUtils** - float[] ↔ Solr vector string conversion
+- **SolrQueryUtils** - KNN query string builder (`{!knn f=<field> topK=<k>}<vector>`)
+
 ### Document Creators (Strategy Pattern)
 
 `indexing/documentcreator/` uses strategy pattern for format parsing:
