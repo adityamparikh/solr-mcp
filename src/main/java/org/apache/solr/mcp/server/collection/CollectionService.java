@@ -16,17 +16,8 @@
  */
 package org.apache.solr.mcp.server.collection;
 
-import static org.apache.solr.mcp.server.collection.CollectionUtils.getFloat;
-import static org.apache.solr.mcp.server.collection.CollectionUtils.getInteger;
-import static org.apache.solr.mcp.server.collection.CollectionUtils.getLong;
-import static org.apache.solr.mcp.server.util.JsonUtils.toJson;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.observation.annotation.Observed;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
 import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrRequest;
 import org.apache.solr.client.solrj.SolrServerException;
@@ -47,6 +38,16 @@ import org.springaicommunity.mcp.annotation.McpTool;
 import org.springaicommunity.mcp.annotation.McpToolParam;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+
+import static org.apache.solr.mcp.server.collection.CollectionUtils.getFloat;
+import static org.apache.solr.mcp.server.collection.CollectionUtils.getInteger;
+import static org.apache.solr.mcp.server.collection.CollectionUtils.getLong;
+import static org.apache.solr.mcp.server.util.JsonUtils.toJson;
 
 /**
  * Spring Service providing comprehensive Solr collection management and
@@ -427,8 +428,12 @@ public class CollectionService {
 		// Query performance metrics
 		QueryResponse statsResponse = solrClient.query(actualCollection, new SolrQuery(ALL_DOCUMENTS_QUERY).setRows(0));
 
-		return new SolrMetrics(buildIndexStats(lukeResponse), buildQueryStats(statsResponse),
-				fetchCacheMetrics(actualCollection), fetchHandlerMetrics(actualCollection), new Date());
+        return new SolrMetrics(
+                buildIndexStats(lukeResponse),
+                buildQueryStats(statsResponse),
+                fetchCacheMetrics(actualCollection),
+                fetchHandlerMetrics(actualCollection),
+                new Date());
 	}
 
 	/**
