@@ -20,7 +20,7 @@ errorprone-core = "2.38.0"
 nullaway = "0.12.7"
 
 # Test dependencies
-testcontainers = "2.0.2"
+testcontainers = "2.0.4"
 awaitility = "4.2.2"
 opentelemetry-instrumentation-bom = "2.11.0"
 
