@@ -13,7 +13,7 @@ commons-csv = "1.10.0"
 mcp-server-security = "0.0.6"
 
 # OpenTelemetry
-opentelemetry-logback-appender = "2.21.0-alpha"
+opentelemetry-logback-appender = "2.26.1-alpha"
 
 # Error Prone and analysis tools
 errorprone-core = "2.38.0"
