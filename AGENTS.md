@@ -44,7 +44,7 @@ PROFILES=http ./gradlew bootRun    # HTTP mode
 Four service classes expose MCP tools via `@McpTool` annotations:
 
 - **SearchService** (`search/`) - Full-text search with filtering, faceting, sorting, pagination
-- **IndexingService** (`indexing/`) - Document indexing supporting JSON, CSV, XML formats
+- **IndexingService** (`indexing/`) - Document indexing supporting JSON, CSV, XML formats and file uploads
 - **CollectionService** (`metadata/`) - List collections, get stats, health checks
 - **SchemaService** (`metadata/`) - Schema introspection
 
@@ -53,8 +53,27 @@ Four service classes expose MCP tools via `@McpTool` annotations:
 `indexing/documentcreator/` uses strategy pattern for format parsing:
 - `SolrDocumentCreator` - Common interface
 - `JsonDocumentCreator`, `CsvDocumentCreator`, `XmlDocumentCreator` - Format implementations
+- `FileDocumentCreator` - File content indexing (unstructured text)
 - `IndexingDocumentCreator` - Orchestrator that delegates to format-specific creators
 - `FieldNameSanitizer` - Automatic field name validation for Solr compatibility
+
+### Indexing Tools: Structured vs. Unstructured
+
+The IndexingService exposes two categories of indexing tools that serve complementary purposes:
+
+**Structured data tools** (`index-json-documents`, `index-csv-documents`, `index-xml-documents`):
+- Parse format-specific structures into documents with multiple discrete, typed fields
+- Enable field-level querying, filtering, faceting, and sorting in Solr
+- Apply field flattening (nested JSON/XML), type preservation, and field name sanitization
+- Best for: tabular data, APIs, databases, any data with a defined schema
+
+**File upload tool** (`index-file-document`):
+- Indexes pre-extracted text content as a single document with `id`, `content`, and `filename` fields
+- Relies on the AI chat client to extract text from files before sending to the MCP server
+- Designed for full-text search over unstructured document content
+- Best for: markdown, PDFs, text files, and other document formats
+
+These tools are **not redundant**. A CSV indexed via `index-csv-documents` produces documents with individually searchable fields (e.g., filter by `category:tools`), while the same CSV indexed via `index-file-document` produces a single document with all text in one `content` field suitable only for full-text search.
 
 ### Transport Modes
 
