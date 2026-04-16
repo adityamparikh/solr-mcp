@@ -183,24 +183,140 @@ integration scenario against it. This is the end-to-end proof.
 
 ## 6. Reflection / Resource Hints
 
-Spring AI 1.1 ships most MCP-related hints. Expect to still need hints for:
+### 6.1 SolrJ (JSON wire format only)
 
-- SolrJ: response beans, Jackson deserialization targets, concrete
-  `SolrRequest` / `SolrResponse` subclasses actually used.
-- Commons CSV: no known hints needed; verify.
-- OpenTelemetry Spring Boot starter: verify it is native-friendly on its
-  current version; if not, disable it in the native variant initially.
-- MCP tool return types (records/POJOs returned from `@McpTool` methods):
-  Spring AI's AOT processor should cover these; add manual
-  `@RegisterReflectionForBinding` on any failing types.
+The client is constructed in
+`src/main/java/org/apache/solr/mcp/server/config/SolrConfig.java:174` as:
 
-Approach:
-1. First pass: build and run `nativeTest`. Fix each reflection/resource
-   failure by adding a targeted hint via `RuntimeHintsRegistrar` in a
-   `@Configuration` class registered with `@ImportRuntimeHints`.
-2. Only fall back to the agent (`-agentlib:native-image-agent`) if static
-   analysis of the failures is too noisy. Agent output goes to
+```java
+new HttpJdkSolrClient.Builder(url)
+    .withResponseParser(jsonResponseParser)   // JSON, not JavaBin
+    .build();
+```
+
+This means the **JavaBin codec path is not taken**, which is the SolrJ
+surface most frequently cited as native-hostile (heavy reflective
+dispatch over `NamedList`, `EnumFieldValue`, `Date`, `SolrDocument`,
+etc.). The XML response parser is similarly out of scope.
+
+Concrete SolrJ surface the native image must cover:
+
+| Area | Native risk | Notes |
+| --- | --- | --- |
+| `HttpJdkSolrClient` | Low | Uses the JDK `HttpClient`; no Netty/HttpComponents reflection. |
+| `JsonResponseParser` | Low | Delegates to Jackson, which Spring Boot AOT already instruments. |
+| `QueryResponse` / `UpdateResponse` fields returned to callers | Low-medium | Concrete classes used are narrow; add `@RegisterReflectionForBinding` only if `nativeTest` flags them. |
+| `NamedList<Object>` | Low | Present in the mbeans admin path used by `CollectionService.getCacheMetrics()` / `getHandlerMetrics()`. Those methods already catch `RuntimeException` and return `null` on Solr 10, so reflection failures there are non-fatal. |
+| `ServiceLoader` contributions (codec, stream factories) | Medium | Need reachability metadata or explicit resource hints for `META-INF/services/*`. Solve via `HintsRegistrar` if discovered failures appear. |
+| `solr-solrj` 9.x native metadata | Not published | Upstream does not ship `reachability-metadata.json`. We will generate hints locally. |
+
+Mitigation order:
+1. Run `nativeTest` against the JSON-only path; collect failures.
+2. Add targeted `RuntimeHintsRegistrar` entries alongside `SolrConfig`
+   (e.g. `SolrReflectionHints.java`).
+3. Only if failure volume is large, run once with
+   `-agentlib:native-image-agent=config-output-dir=...` over the real test
+   suite and commit the generated config under
    `src/main/resources/META-INF/native-image/org.apache.solr/solr-mcp/`.
+
+### 6.2 OpenTelemetry / Micrometer tracing
+
+Good news: the **OpenTelemetry Spring Boot Starter explicitly supports
+native image** (it is recommended *over* the Java agent for native
+deployments). See OpenTelemetry's Spring starter docs and the
+`opentelemetry-java-examples/spring-native` sample.
+
+Caveats that matter for this project:
+
+- Version drift: `build.gradle.kts:105` pins
+  `opentelemetry-instrumentation-bom:2.11.0` but
+  `gradle/libs.versions.toml:24` declares `2.26.1`. Only the BOM
+  coordinate actually drives resolution, so **2.11.0 is in effect**.
+  Recommend bumping to the catalog version (and reconciling the two
+  sources of truth) as part of this work, because reachability metadata
+  has been actively improved in the 2.20+ line.
+- OTLP/gRPC exporter: the endpoint is configured in
+  `application-http.properties:23` (`otel.exporter.otlp.endpoint=...`,
+  `otel.exporter.otlp.protocol=grpc`) and is **not referenced by
+  `application-stdio.properties`**. gRPC exporters historically need the
+  most native hints; by targeting STDIO we sidestep this — but the
+  gRPC-related classes are still on the classpath.
+- `io.micrometer:micrometer-tracing-bridge-otel` — bridges Micrometer
+  Observation to OTel. Native-compatible in current versions (Boot 3.4+);
+  `@Observed` annotations (`IndexingService.java`, `SearchService.java`,
+  `SchemaService.java`, `CollectionService.java`) rely on Spring AOP,
+  which AOT supports via proxy hints emitted by Spring Boot.
+- `io.micrometer:micrometer-registry-prometheus` — only meaningful under
+  HTTP profile (it's scraped via `/actuator/prometheus`). Bean is created
+  unconditionally but harmless in STDIO. Native-compatible.
+
+Action for v1 (STDIO only): do nothing proactive; let `nativeTest` tell
+us. If reachability complaints surface from the OTLP exporter path,
+either (a) bump to OTel BOM 2.26+, or (b) put the OTLP exporter
+configuration behind `@Profile("http")` so those classes are never
+wired under STDIO (they are already only configured via
+`application-http.properties`).
+
+### 6.3 Security / OAuth2 on classpath under STDIO
+
+Current state in the repo (already good):
+
+- `src/main/resources/application-stdio.properties:7-9` already excludes
+  `SecurityAutoConfiguration` and
+  `ManagementWebSecurityAutoConfiguration` via
+  `spring.autoconfigure.exclude`.
+- `HttpSecurityConfiguration.java:34` is annotated `@Profile("http")`.
+- `MethodSecurityConfiguration.java:32` is `@Profile("http")`.
+- No `@Import` or static references pull these classes into the STDIO
+  bean graph.
+
+Remaining concern: Spring Boot AOT runs with a **specific active
+profile**. If AOT runs without `spring.profiles.active=stdio`, the AOT
+processor may still try to process the security autoconfiguration,
+potentially emit hints for it, and/or fail on missing OAuth2 config at
+processing time.
+
+Mitigation:
+
+1. **Pin the AOT profile.** In the Gradle `processAot` / `processTestAot`
+   task configuration (only when `-Pnative`), set:
+   ```kotlin
+   tasks.named<JavaExec>("processAot") {
+       args("--spring.profiles.active=stdio")
+   }
+   tasks.named<JavaExec>("processTestAot") {
+       args("--spring.profiles.active=stdio")
+   }
+   ```
+   This ensures `application-stdio.properties` (with its
+   `spring.autoconfigure.exclude`) is active during AOT, so security
+   autoconfig is excluded before hint generation runs.
+2. **Make exclusions compile-time too, as a belt-and-suspenders step.**
+   Add `@SpringBootApplication(exclude = {...})` to `Main` for the two
+   security autoconfig classes. The property-based exclusion already in
+   `application-stdio.properties` is runtime; the annotation-based
+   exclusion is seen by AOT unconditionally.
+3. **Leave the jars on the classpath.** Removing `spring-boot-starter-
+   security` and the OAuth2 resource server starter would break the HTTP
+   profile and the JVM Docker image. Native image's dead-code elimination
+   will drop unused classes; what matters is that AOT does not *try* to
+   wire them.
+4. If residual reachability failures show up from the MCP security
+   bridge (`mcp-server-security`), confirm it does not have eager
+   `@Configuration` classes that load outside `@Profile("http")`. If it
+   does, wrap our usage with `@ConditionalOnProperty`.
+
+### 6.4 Hints workflow
+
+1. First pass: build and run `nativeTest` with `-Pnative`. Fix each
+   reflection/resource failure by adding a targeted hint via a
+   `RuntimeHintsRegistrar` in a `@Configuration` class registered with
+   `@ImportRuntimeHints`. Preferred over annotation-scattering because
+   the rules are centralized and reviewable.
+2. Only fall back to the agent (`-agentlib:native-image-agent`) if
+   static analysis of the failures is too noisy. Agent output goes to
+   `src/main/resources/META-INF/native-image/org.apache.solr/solr-mcp/`
+   and is committed.
 
 ## 7. Profile / Application Config
 
@@ -286,18 +402,36 @@ The default PR build (`./gradlew build`) remains JVM-only and fast.
 
 ## 11. Risks & Open Questions
 
-- **SolrJ native compatibility.** SolrJ historically relies on reflective
-  codec discovery and XML/JavaBin deserialization. If hints become unwieldy,
-  consider pinning the SolrJ response path to JSON only in the native build.
-- **OpenTelemetry starter.** May require significant reachability metadata or
-  version bump.
-- **Spring Security + OAuth2 resource server.** Off by default in STDIO, but
-  simply being on the classpath can drag AOT processing into code paths that
-  fail. May need `@ConditionalOnProperty` gating or `@Profile("http")`.
+- **SolrJ native compatibility.** *Downgraded from medium to low-medium.*
+  The project already uses `JsonResponseParser` on `HttpJdkSolrClient`,
+  avoiding the JavaBin/XML reflective surface. Residual risk is
+  `ServiceLoader` metadata and a narrow set of response bean fields;
+  handle via a local `RuntimeHintsRegistrar`. See §6.1.
+- **OpenTelemetry starter.** *Downgraded from medium to low for STDIO.*
+  The starter is officially native-supported. Action items: bump the
+  OTel instrumentation BOM (currently 2.11.0 in `build.gradle.kts`,
+  catalog says 2.26.1 — inconsistent), and note that the OTLP/gRPC
+  exporter is only wired in the HTTP profile, so the STDIO native image
+  does not exercise its reflection surface. See §6.2.
+- **Spring Security + OAuth2 resource server.** *Downgraded.* Already
+  excluded via `spring.autoconfigure.exclude` in
+  `application-stdio.properties` and all security config classes carry
+  `@Profile("http")`. The new risk is AOT-time: must pin
+  `spring.profiles.active=stdio` on `processAot`/`processTestAot` so the
+  exclusions are applied before hint generation, and mirror the
+  exclusions at annotation level on `Main` for defense in depth. See §6.3.
+- **AOT profile correctness.** New risk surfaced during investigation:
+  AOT runs once at build time with one profile active. Building the
+  native image with the wrong (or no) profile means the wrong bean
+  graph is captured. Non-trivial: STDIO and HTTP diverge heavily. V1
+  commits to STDIO only; HTTP native is an explicit follow-up.
 - **Jib + distroless + glibc version.** Confirm the base image's glibc is
   compatible with the binary GraalVM produces on the CI image.
 - **Build time & memory.** `nativeCompile` is RAM-hungry (commonly 4–8 GB).
   Ensure CI runners have headroom.
+- **`mcp-server-security` library.** Small, non-Spring-official. Verify
+  it has no eager `@Configuration` outside `@Profile("http")` that would
+  force its classes into the STDIO AOT graph.
 
 ## 12. Out of Scope / Follow-ups
 
