@@ -64,7 +64,7 @@ for this project.
 3. Switch Jib's base image for native to a small Linux image with glibc
    (e.g. `gcr.io/distroless/base-debian12` or `cgr.dev/chainguard/glibc-dynamic`).
    Do **not** use `scratch` — GraalVM native images still need glibc and a few
-   shared libs unless `--static --libc=musl` is used (follow-up).
+   shared libs.
 4. Entry point becomes the native binary, not `java -jar`. `jvmFlags` and
    `mainClass` on the Jib container block are dropped for the native variant.
 5. Native tests (`nativeTest`) run in a separate CI job, not as part of
@@ -435,8 +435,5 @@ The default PR build (`./gradlew build`) remains JVM-only and fast.
 
 ## 12. Out of Scope / Follow-ups
 
-- Static linking with musl (`--static --libc=musl`) for a `scratch`-based
-  image.
 - HTTP profile native image (Actuator, Prometheus, OAuth2).
-- Profile-Guided Optimization (PGO) builds.
 - Publishing the native image from CI to GHCR / Docker Hub.
