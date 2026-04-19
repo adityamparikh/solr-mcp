@@ -26,7 +26,20 @@ plugins {
     alias(libs.plugins.errorprone)
     alias(libs.plugins.spotless)
     alias(libs.plugins.jib)
+    alias(libs.plugins.graalvm.native)
 }
+
+// GraalVM Native Image (Opt-In)
+// =============================
+// Invoked via `./gradlew ... -Pnative`. See docs/specs/graalvm-native-image.md.
+// When true:
+//   - AOT tasks (processAot/processTestAot) run with spring.profiles.active=stdio
+//     so that security autoconfig exclusions from application-stdio.properties are
+//     applied during hint generation.
+//   - Jib is reconfigured to package the native binary on a distroless base
+//     instead of shipping classpath + JRE.
+//   - `./gradlew jibDockerBuild -Pnative` produces `solr-mcp:<version>-native`.
+val nativeBuild = project.hasProperty("native")
 
 group = "org.apache.solr"
 version = "1.0.0-SNAPSHOT"
@@ -102,7 +115,7 @@ dependencies {
     // JSpecify for nullability annotations
     implementation(libs.jspecify)
 
-    implementation(platform("io.opentelemetry.instrumentation:opentelemetry-instrumentation-bom:2.11.0"))
+    implementation(platform("io.opentelemetry.instrumentation:opentelemetry-instrumentation-bom:${libs.versions.opentelemetry.instrumentation.bom.get()}"))
     implementation("io.opentelemetry.instrumentation:opentelemetry-spring-boot-starter")
     implementation(libs.micrometer.tracing.bridge.otel)
 
@@ -283,6 +296,14 @@ tasks.register<Test>("dockerIntegrationTest") {
     // Set longer timeout for Docker tests
     systemProperty("junit.jupiter.execution.timeout.default", "5m")
 
+    // When invoked as `./gradlew dockerIntegrationTest -Pnative`, the Jib
+    // image produced is `solr-mcp:<version>-native`. BuildInfoReader only
+    // knows the plain version, so pass the tag override through a system
+    // property that the integration test can read.
+    if (nativeBuild) {
+        systemProperty("solr.mcp.docker.image.tag.suffix", "-native")
+    }
+
     // Output test results
     testLogging {
         events("passed", "skipped", "failed", "standardOut", "standardError")
@@ -383,61 +404,89 @@ jib {
     }
 
     from {
-        // Use Eclipse Temurin JRE 25 as the base image
-        // Temurin is the open-source build of OpenJDK from Adoptium
-        image = "eclipse-temurin:25-jre"
+        // JVM build: Eclipse Temurin JRE 25 (Adoptium).
+        // Native build: distroless base (no JRE needed, minimal surface).
+        image =
+            if (nativeBuild) {
+                "gcr.io/distroless/base-debian12"
+            } else {
+                "eclipse-temurin:25-jre"
+            }
 
-        // Multi-platform support for both AMD64 and ARM64 architectures
-        // This allows the image to run on x86_64 machines and Apple Silicon (M1/M2/M3)
+        // JVM images are multi-arch. Native binaries are architecture-specific,
+        // so the native image ships single-arch (linux/amd64). Multi-arch native
+        // would require building the binary on each architecture separately; see
+        // docs/specs/graalvm-native-image.md §12.
         platforms {
             platform {
                 architecture = "amd64"
                 os = "linux"
             }
-            platform {
-                architecture = "arm64"
-                os = "linux"
+            if (!nativeBuild) {
+                platform {
+                    architecture = "arm64"
+                    os = "linux"
+                }
             }
         }
     }
 
     to {
-        // Default image name (can be overridden with -Djib.to.image=...)
-        // Format: repository/image-name:tag
-        image = "solr-mcp:$version"
-
-        // Tags to apply to the image
-        // The version tag is applied by default, plus "latest" tag
-        tags = setOf("latest")
+        // JVM image: solr-mcp:$version (+latest).
+        // Native image: solr-mcp:$version-native (+latest-native).
+        image =
+            if (nativeBuild) {
+                "solr-mcp:$version-native"
+            } else {
+                "solr-mcp:$version"
+            }
+        tags = if (nativeBuild) setOf("latest-native") else setOf("latest")
     }
 
     container {
-        // Container environment variables
-        // These are baked into the image but can be overridden at runtime
+        // Container environment variables (baked into the image, overridable at runtime)
         environment =
-            mapOf(
-                // Disable Spring Boot Docker Compose support when running in container
-                // Docker Compose integration is disabled in the container image.
-                // It is only useful for local development (HTTP profile) where
-                // the host has Docker and a compose.yaml. Inside a container,
-                // Docker Compose cannot start sibling containers without a
-                // Docker socket mount, so it must be turned off.
-                // The application-stdio.properties also disables it for STDIO mode.
-                "SPRING_DOCKER_COMPOSE_ENABLED" to "false",
-            )
+            if (nativeBuild) {
+                mapOf(
+                    // Native build targets STDIO only for now (see spec §7)
+                    "SPRING_DOCKER_COMPOSE_ENABLED" to "false",
+                    "SPRING_PROFILES_ACTIVE" to "stdio",
+                )
+            } else {
+                mapOf(
+                    // Disable Spring Boot Docker Compose support when running in container.
+                    // Docker Compose integration is disabled in the container image.
+                    // It is only useful for local development (HTTP profile) where
+                    // the host has Docker and a compose.yaml. Inside a container,
+                    // Docker Compose cannot start sibling containers without a
+                    // Docker socket mount, so it must be turned off.
+                    // The application-stdio.properties also disables it for STDIO mode.
+                    "SPRING_DOCKER_COMPOSE_ENABLED" to "false",
+                )
+            }
 
-        // JVM flags for containerized environments
-        // These optimize the JVM for running in containers
+        // JVM flags only apply to the JVM build. For native, the entrypoint is
+        // the pre-compiled binary; JVM flags are meaningless.
         jvmFlags =
-            listOf(
-                // Use container-aware memory settings
-                "-XX:+UseContainerSupport",
-                // Set max RAM percentage (default 75%)
-                "-XX:MaxRAMPercentage=75.0",
-            )
+            if (nativeBuild) {
+                emptyList()
+            } else {
+                listOf(
+                    // Use container-aware memory settings
+                    "-XX:+UseContainerSupport",
+                    // Set max RAM percentage (default 75%)
+                    "-XX:MaxRAMPercentage=75.0",
+                )
+            }
 
-        // Explicitly set main class to avoid ASM scanning issues with newer Java versions
-        mainClass = "org.apache.solr.mcp.server.Main"
+        if (nativeBuild) {
+            // Entrypoint is the native binary staged at /app/solr-mcp
+            // (see extraDirectories config below)
+            entrypoint = listOf("/app/solr-mcp")
+        } else {
+            // Explicitly set main class to avoid ASM scanning issues with newer Java versions
+            mainClass = "org.apache.solr.mcp.server.Main"
+        }
 
         // Port exposures (for documentation purposes)
         // The application doesn't expose ports by default (STDIO mode)
@@ -457,4 +506,53 @@ jib {
             ),
         )
     }
+
+    // Stage the native binary into the image under -Pnative
+    if (nativeBuild) {
+        extraDirectories {
+            paths {
+                path {
+                    setFrom(layout.buildDirectory.dir("native/nativeCompile"))
+                    into = "/app"
+                    includes.set(listOf("solr-mcp"))
+                }
+            }
+            permissions.set(mapOf("/app/solr-mcp" to "755"))
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GraalVM Native Image configuration
+// ─────────────────────────────────────────────────────────────────────────────
+// The `org.graalvm.buildtools.native` plugin registers `nativeCompile` and
+// `nativeTest` tasks. They are only useful when a GraalVM toolchain is
+// available; the plugin's presence does not affect regular JVM builds.
+graalvmNative {
+    binaries {
+        named("main") {
+            imageName.set("solr-mcp")
+            buildArgs.addAll("--no-fallback", "-H:+ReportExceptionStackTraces")
+        }
+        named("test") {
+            buildArgs.addAll("--no-fallback")
+        }
+    }
+}
+
+// When -Pnative is present, pin spring.profiles.active=stdio on the AOT
+// processor so application-stdio.properties (which excludes
+// SecurityAutoConfiguration + ManagementWebSecurityAutoConfiguration) is
+// applied while hint generation runs. Test AOT is intentionally left alone
+// because individual @SpringBootTest classes set their own profiles.
+if (nativeBuild) {
+    tasks.matching { it.name == "processAot" }.configureEach {
+        (this as? JavaExec)?.args("--spring.profiles.active=stdio")
+    }
+}
+
+// Under -Pnative, Jib packaging tasks must wait for the native binary
+if (nativeBuild) {
+    tasks.matching { it.name in setOf("jib", "jibDockerBuild", "jibBuildTar") }
+        .configureEach { dependsOn("nativeCompile") }
 }

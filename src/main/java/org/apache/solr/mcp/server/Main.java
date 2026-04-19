@@ -21,7 +21,9 @@ import org.apache.solr.mcp.server.indexing.IndexingService;
 import org.apache.solr.mcp.server.metadata.SchemaService;
 import org.apache.solr.mcp.server.search.SearchService;
 import org.springframework.boot.SpringApplication;
+import org.springframework.boot.actuate.autoconfigure.security.servlet.ManagementWebSecurityAutoConfiguration;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration;
 
 /**
  * Main Spring Boot application class for the Apache Solr Model Context Protocol
@@ -103,7 +105,13 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * @see SchemaService
  * @see org.springframework.boot.SpringApplication
  */
-@SpringBootApplication
+// Mirror spring.autoconfigure.exclude from application-stdio.properties at the
+// annotation level so Spring Boot AOT processing honors the exclusion even when
+// the STDIO profile is not active at build time (e.g. in the JVM path). The
+// HTTP profile re-enables these via HttpSecurityConfiguration which carries
+// @Profile("http") and declares its own SecurityFilterChain beans, so excluding
+// the autoconfiguration here does not affect HTTP-mode security.
+@SpringBootApplication(exclude = {SecurityAutoConfiguration.class, ManagementWebSecurityAutoConfiguration.class})
 public class Main {
 	static void main(String[] args) {
 		SpringApplication.run(Main.class, args);
