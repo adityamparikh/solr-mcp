@@ -372,6 +372,15 @@ tasks.register<Test>("dockerIntegrationTest") {
         includeTags("docker-integration")
     }
 
+    // The native image is AOT-compiled for the STDIO profile only (Spring Boot
+    // bakes a profile-locked bean graph at AOT time, and one image cannot
+    // serve both transports). Exclude DockerImageHttpIntegrationTest when
+    // running under -Pnative; HTTP coverage is provided by the Jib JVM image
+    // path. Native HTTP support is a separate, larger piece of work.
+    if (nativeBuild) {
+        exclude("**/DockerImageHttpIntegrationTest*")
+    }
+
     // Use the same test classpath and configuration as regular tests
     testClassesDirs = sourceSets["test"].output.classesDirs
     classpath = sourceSets["test"].runtimeClasspath
