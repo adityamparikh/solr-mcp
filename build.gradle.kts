@@ -182,7 +182,7 @@ tasks.withType<Test> {
         }
     }
     // Forward solr.test.image system property to test JVMs for Solr version compatibility testing
-    systemProperty("solr.test.image", System.getProperty("solr.test.image", "solr:9.9-slim"))
+    systemProperty("solr.test.image", System.getProperty("solr.test.image", "solr:9.10-slim"))
     if (name != "dockerIntegrationTest") {
         finalizedBy(tasks.jacocoTestReport)
     }
@@ -218,7 +218,7 @@ tasks.register<Test>("integrationTest") {
     testClassesDirs = sourceSets["test"].output.classesDirs
     classpath = sourceSets["test"].runtimeClasspath
 
-    systemProperty("solr.test.image", System.getProperty("solr.test.image", "solr:9.9-slim"))
+    systemProperty("solr.test.image", System.getProperty("solr.test.image", "solr:9.10-slim"))
 
     mustRunAfter(tasks.named("unitTest"))
     finalizedBy(tasks.jacocoTestReport)
