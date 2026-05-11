@@ -333,17 +333,29 @@ path as opt-in behind the same flag; document the gap.
 A separate GitHub Actions workflow `native.yml` runs on every PR
 (no path filter — native compatibility is validated unconditionally).
 - Triggers: `workflow_dispatch` and `pull_request` (no `paths:` filter).
-- Steps:
-  1. Set up GraalVM JDK 25 (via `graalvm/setup-graalvm@v1`).
-  2. `./gradlew nativeTest`
-  3. `./gradlew bootBuildImage`
-  4. `./gradlew dockerIntegrationTest -Pnative` (native-mode variant of the
-     STDIO integration test; HTTP test is excluded under `-Pnative`).
-  5. `scripts/benchmark-native.sh` — upload results table as a job artifact.
+- Jobs:
+  - `nativeTest` — runs `./gradlew nativeTest -Pnative` once.
+  - `native-image` — matrix over `profile: [stdio, http]`. For each
+    profile, builds the per-profile native Docker image and runs the
+    matching docker-integration test classes against it:
+    1. Set up GraalVM JDK 25 (via `graalvm/setup-graalvm@v1`).
+    2. `./gradlew bootBuildImage -Pnative -Pprofile=${profile}` →
+       produces `solr-mcp:<v>-native-stdio` or `solr-mcp:<v>-native-http`.
+       Native AOT bakes the Spring profile into the binary at build
+       time, so each transport mode needs its own image.
+    3. `./gradlew dockerIntegrationTest -Pnative -Pprofile=${profile}`.
+       The `stdio` entry runs the two stdio docker-integration test
+       classes; the `http` entry runs `DockerImageHttpIntegrationTest`.
+       Mismatched test classes are excluded per-profile in
+       `build.gradle.kts` because the AOT binary lacks the beans for
+       the other transport mode.
+  - `benchmark` — `scripts/benchmark-native.sh`, uploads results table
+    as a job artifact.
 
 `ci.yml` separately runs `./gradlew dockerIntegrationTest` (Jib JVM,
-both STDIO + HTTP test classes) under the `JVM Docker Integration`
-job, on every PR.
+both STDIO + HTTP test classes against the single `solr-mcp:<v>`
+image; runtime profile is selected via the `PROFILES` env var) under
+the `JVM Docker Integration` job, on every PR.
 
 The default PR build (`./gradlew build`) remains JVM-only and fast.
 
