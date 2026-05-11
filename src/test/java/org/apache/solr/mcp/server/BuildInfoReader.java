@@ -87,12 +87,34 @@ public class BuildInfoReader {
 	}
 
 	/**
-	 * Gets the Docker image name in the format "artifact:version".
+	 * Gets the Docker image name in the format {@code artifact:version[suffix]}.
 	 *
-	 * @return Docker image name (e.g., "solr-mcp:1.0.0-SNAPSHOT")
+	 * <p>
+	 * Honors the {@code solr.mcp.docker.image.tag.suffix} system property when set,
+	 * appending it to the version. The Gradle {@code dockerIntegrationTest} task
+	 * sets this so tests resolve the image actually built by the matching
+	 * invocation:
+	 *
+	 * <ul>
+	 * <li>{@code ./gradlew dockerIntegrationTest} (Jib JVM) — no suffix; image is
+	 * {@code solr-mcp:VERSION}
+	 * <li>{@code ./gradlew dockerIntegrationTest -Pnative} (default profile=stdio)
+	 * — suffix {@code -native-stdio}; image is
+	 * {@code solr-mcp:VERSION-native-stdio}
+	 * <li>{@code ./gradlew dockerIntegrationTest -Pnative -Pprofile=http} — suffix
+	 * {@code -native-http}; image is {@code solr-mcp:VERSION-native-http}
+	 * </ul>
+	 *
+	 * Without honoring the suffix, native-image tests previously resolved
+	 * {@code solr-mcp:VERSION} and silently exercised any cached JVM Jib image
+	 * instead of the buildpack-built native image they were nominally testing.
+	 *
+	 * @return Docker image name (e.g., "solr-mcp:1.0.0-SNAPSHOT" or
+	 *         "solr-mcp:1.0.0-SNAPSHOT-native-stdio")
 	 */
 	public static String getDockerImageName() {
-		return String.format("%s:%s", getArtifact(), getVersion());
+		String suffix = System.getProperty("solr.mcp.docker.image.tag.suffix", "");
+		return String.format("%s:%s%s", getArtifact(), getVersion(), suffix);
 	}
 
 	/**

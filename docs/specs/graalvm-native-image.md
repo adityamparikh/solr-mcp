@@ -152,11 +152,27 @@ val nativeBuild = project.hasProperty("native")
 
 The `-Pnative` flag is only needed for:
 - `nativeCompile` — triggers `processAot` with the STDIO profile.
-- `dockerIntegrationTest` — selects the `-native` image tag suffix.
+- `dockerIntegrationTest` — selects per-profile image tag suffixes:
+  - no flags → JVM Jib image (`solr-mcp:VERSION`); runs all docker-integration tests
+  - `-Pnative` (default profile=stdio) → `-native-stdio` suffix; excludes the HTTP test
+  - `-Pnative -Pprofile=http` → `-native-http` suffix; runs only the HTTP test
+  (Each native image is AOT-locked to one transport; see "Why two native
+  images" in CLAUDE.md / README.md.)
 
-`bootBuildImage` is always configured for native builds (it passes
-`BP_NATIVE_IMAGE=true` unconditionally). No `-Pnative` flag is required
-to run it.
+### 5.3.1 BuildInfoReader image-name resolution
+
+`BuildInfoReader.getDockerImageName()` honors the
+`solr.mcp.docker.image.tag.suffix` system property and appends it to the
+build version. The Gradle `dockerIntegrationTest` task sets this per
+invocation:
+
+- `dockerIntegrationTest` (Jib JVM): no suffix → `solr-mcp:VERSION`
+- `dockerIntegrationTest -Pnative` (stdio): `-native-stdio` suffix
+- `dockerIntegrationTest -Pnative -Pprofile=http`: `-native-http` suffix
+
+Without honoring the suffix, native-image tests previously resolved
+`solr-mcp:VERSION` and silently exercised any cached JVM Jib image rather
+than the buildpack-built native image they were nominally testing.
 
 ### 5.4 bootBuildImage config for native
 
@@ -314,17 +330,32 @@ path as opt-in behind the same flag; document the gap.
 
 ## 9. CI
 
-Add a separate GitHub Actions workflow (or job in the existing one)
-`native.yml`:
-- Triggers: `workflow_dispatch` and on PRs touching this spec, the native
-  config, or `gradle/libs.versions.toml`.
-- Steps:
-  1. Set up GraalVM JDK 25 (via `graalvm/setup-graalvm@v1`).
-  2. `./gradlew nativeTest`
-  3. `./gradlew bootBuildImage`
-  4. `./gradlew dockerIntegrationTest -Pnative` (native-mode variant of the
-     STDIO integration test).
-  5. `scripts/benchmark-native.sh` — upload results table as a job artifact.
+A separate GitHub Actions workflow `native.yml` runs on every PR
+(no path filter — native compatibility is validated unconditionally).
+- Triggers: `workflow_dispatch` and `pull_request` (no `paths:` filter).
+- Jobs:
+  - `nativeTest` — runs `./gradlew nativeTest -Pnative` once.
+  - `native-image` — matrix over `profile: [stdio, http]`. For each
+    profile, builds the per-profile native Docker image and runs the
+    matching docker-integration test classes against it:
+    1. Set up GraalVM JDK 25 (via `graalvm/setup-graalvm@v1`).
+    2. `./gradlew bootBuildImage -Pnative -Pprofile=${profile}` →
+       produces `solr-mcp:<v>-native-stdio` or `solr-mcp:<v>-native-http`.
+       Native AOT bakes the Spring profile into the binary at build
+       time, so each transport mode needs its own image.
+    3. `./gradlew dockerIntegrationTest -Pnative -Pprofile=${profile}`.
+       The `stdio` entry runs the two stdio docker-integration test
+       classes; the `http` entry runs `DockerImageHttpIntegrationTest`.
+       Mismatched test classes are excluded per-profile in
+       `build.gradle.kts` because the AOT binary lacks the beans for
+       the other transport mode.
+  - `benchmark` — `scripts/benchmark-native.sh`, uploads results table
+    as a job artifact.
+
+`ci.yml` separately runs `./gradlew dockerIntegrationTest` (Jib JVM,
+both STDIO + HTTP test classes against the single `solr-mcp:<v>`
+image; runtime profile is selected via the `PROFILES` env var) under
+the `JVM Docker Integration` job, on every PR.
 
 The default PR build (`./gradlew build`) remains JVM-only and fast.
 
