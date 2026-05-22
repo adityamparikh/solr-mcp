@@ -256,7 +256,9 @@ public class SearchService {
 					required = false) @Nullable String query,
 			@McpToolParam(description = "Solr fq parameter", required = false) @Nullable List<String> filterQueries,
 			@McpToolParam(description = "Solr facet fields", required = false) @Nullable List<String> facetFields,
-			@McpToolParam(description = "Solr sort parameter", required = false) @Nullable List<Map<String, String>> sortClauses,
+			@McpToolParam(
+					description = "Solr sort parameter",
+					required = false) @Nullable List<Map<String, String>> sortClauses,
 			@McpToolParam(description = "Starting offset for pagination", required = false) @Nullable Integer start,
 			@McpToolParam(description = "Number of rows to return", required = false) @Nullable Integer rows)
 			throws SolrServerException, IOException {
