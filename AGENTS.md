@@ -8,7 +8,7 @@ Solr MCP Server is a Spring AI Model Context Protocol (MCP) server that enables 
 
 - **Status:** Apache incubating project (v0.0.2-SNAPSHOT)
 - **Java:** 25+ (centralized in build.gradle.kts)
-- **Framework:** Spring Boot 4.0.6, Spring AI 2.0.0-M6
+- **Framework:** Spring Boot 4.0.6, Spring AI 2.0.0-M7
 - **License:** Apache 2.0
 
 ## Common Commands
@@ -97,7 +97,7 @@ Spring Boot Buildpacks output logs to stdout, breaking MCP's STDIO protocol. Jib
 ### Spring Boot 4 Notes
 
 This branch targets Spring Boot 4.0.6 ([release notes](https://spring.io/blog/2026/04/23/spring-boot-4-0-6-available-now))
-and Spring AI 2.0.0-M5. Key differences from the main (SB 3.x) branch:
+and Spring AI 2.0.0-M7. Key differences from the main (SB 3.x) branch:
 
 - **Jackson 3:** `tools.jackson.databind` replaces `com.fasterxml.jackson.databind`. Annotations
   remain in `com.fasterxml.jackson.annotation`.

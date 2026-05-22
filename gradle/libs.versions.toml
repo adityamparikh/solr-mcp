@@ -8,7 +8,7 @@ spotless = "7.0.2"
 graalvm-native = "0.10.6"
 
 # Main dependencies
-spring-ai = "2.0.0-M6"
+spring-ai = "2.0.0-M7"
 solr = "10.0.0"
 commons-csv = "1.14.1"
 mcp-server-security = "0.0.6"
@@ -40,7 +40,9 @@ spring-boot-starter-webmvc-test = { module = "org.springframework.boot:spring-bo
 spring-boot-testcontainers = { module = "org.springframework.boot:spring-boot-testcontainers" }
 # Spring AI
 spring-ai-starter-mcp-server-webmvc = { module = "org.springframework.ai:spring-ai-starter-mcp-server-webmvc" }
+spring-ai-autoconfigure-mcp-server-common = { module = "org.springframework.ai:spring-ai-autoconfigure-mcp-server-common" }
 spring-ai-starter-mcp-client = { module = "org.springframework.ai:spring-ai-starter-mcp-client" }
+spring-ai-autoconfigure-mcp-client-common = { module = "org.springframework.ai:spring-ai-autoconfigure-mcp-client-common" }
 spring-ai-spring-boot-docker-compose = { module = "org.springframework.ai:spring-ai-spring-boot-docker-compose" }
 spring-ai-spring-boot-testcontainers = { module = "org.springframework.ai:spring-ai-spring-boot-testcontainers" }
 
@@ -103,6 +105,7 @@ test = [
     "testcontainers-solr",
     "testcontainers-grafana",
     "spring-ai-starter-mcp-client",
+    "spring-ai-autoconfigure-mcp-client-common",
     "awaitility",
     "opentelemetry-sdk-testing",
     "micrometer-tracing-test",
