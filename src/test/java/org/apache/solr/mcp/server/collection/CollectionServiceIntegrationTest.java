@@ -100,7 +100,7 @@ class CollectionServiceIntegrationTest {
 	}
 
 	@Test
-	void testListCollections() {
+	void testListCollections() throws Exception {
 		List<String> collections = collectionService.listCollections();
 
 		log.debug("Collections: {}", collections);
@@ -207,7 +207,7 @@ class CollectionServiceIntegrationTest {
 	}
 
 	@Test
-	void testGetCacheMetrics_afterQueries() {
+	void testGetCacheMetrics_afterQueries() throws Exception {
 		CacheStats cacheStats = collectionService.getCacheMetrics(TEST_COLLECTION);
 
 		// Solr 10 dropped JSON output from /admin/metrics (SOLR-17458);
@@ -233,7 +233,7 @@ class CollectionServiceIntegrationTest {
 	}
 
 	@Test
-	void testGetHandlerMetrics_afterQueriesAndIndexing() {
+	void testGetHandlerMetrics_afterQueriesAndIndexing() throws Exception {
 		HandlerStats handlerStats = collectionService.getHandlerMetrics(TEST_COLLECTION);
 
 		// Solr 10 dropped JSON output from /admin/metrics (SOLR-17458);
@@ -254,12 +254,12 @@ class CollectionServiceIntegrationTest {
 	}
 
 	@Test
-	void testGetCacheMetrics_nonExistentCollection() {
+	void testGetCacheMetrics_nonExistentCollection() throws Exception {
 		assertNull(collectionService.getCacheMetrics("non_existent_collection"));
 	}
 
 	@Test
-	void testGetHandlerMetrics_nonExistentCollection() {
+	void testGetHandlerMetrics_nonExistentCollection() throws Exception {
 		assertNull(collectionService.getHandlerMetrics("non_existent_collection"));
 	}
 

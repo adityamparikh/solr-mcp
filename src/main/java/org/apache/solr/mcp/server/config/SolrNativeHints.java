@@ -67,7 +67,7 @@ public class SolrNativeHints {
 			"org.apache.solr.mcp.server.collection.FieldStats", "org.apache.solr.mcp.server.collection.QueryStats",
 			"org.apache.solr.mcp.server.collection.CacheStats", "org.apache.solr.mcp.server.collection.CacheInfo",
 			"org.apache.solr.mcp.server.collection.HandlerStats", "org.apache.solr.mcp.server.collection.HandlerInfo",
-			"org.apache.solr.mcp.server.search.SearchResponse");
+			"org.apache.solr.mcp.server.search.SearchResponse", "org.apache.solr.mcp.server.schema.SchemaUpdateResult");
 
 	static class Registrar implements RuntimeHintsRegistrar {
 		@Override
@@ -92,7 +92,7 @@ public class SolrNativeHints {
 			hints.reflection().registerType(FacetField.Count.class, categories);
 
 			// SolrJ / Solr API model types used by CoreAdminResponse.getCoreStatus()
-			// which deserializes via Jackson (fasterxml) reflection.
+			// which deserializes via Jackson reflection.
 			for (String solrApiType : List.of("org.apache.solr.client.api.model.SolrJerseyResponse",
 					"org.apache.solr.client.api.model.SolrJerseyResponse$ResponseHeader",
 					"org.apache.solr.client.api.model.ErrorInfo", "org.apache.solr.client.api.model.CoreStatusResponse",
@@ -106,6 +106,21 @@ public class SolrNativeHints {
 			// instantiates DefaultMetaProvider via its no-arg constructor.
 			hints.reflection().registerTypeIfPresent(classLoader,
 					"org.springframework.ai.mcp.annotation.context.DefaultMetaProvider", categories);
+
+			// SolrJ schema request types (needed for Jackson's convertValue in native
+			// image when add-field-types deserializes analyzer trees)
+			hints.reflection().registerType(org.apache.solr.client.solrj.request.schema.AnalyzerDefinition.class,
+					categories);
+			hints.reflection().registerType(org.apache.solr.client.solrj.request.schema.FieldTypeDefinition.class,
+					categories);
+
+			// SolrJ schema response type — returned by the get-schema MCP tool and
+			// serialized to JSON by Spring AI for MCP clients. Without reflection
+			// hints the JSON Spring AI produces in native image is missing the
+			// fields/fieldTypes/dynamicFields/copyFields arrays, which silently
+			// breaks any consumer that introspects the schema.
+			hints.reflection().registerType(org.apache.solr.client.solrj.response.schema.SchemaRepresentation.class,
+					categories);
 
 			// MCP tool response records (package-private, registered by name)
 			for (String className : MCP_RESPONSE_RECORDS) {

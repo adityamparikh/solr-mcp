@@ -25,7 +25,7 @@ import org.apache.solr.common.SolrInputDocument;
 import org.springframework.stereotype.Component;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Utility class for processing JSON documents and converting them to
@@ -40,6 +40,12 @@ import tools.jackson.databind.json.JsonMapper;
 public class JsonDocumentCreator implements SolrDocumentCreator {
 
 	private static final int MAX_INPUT_SIZE_BYTES = 10 * 1024 * 1024;
+
+	private final ObjectMapper objectMapper;
+
+	public JsonDocumentCreator(ObjectMapper objectMapper) {
+		this.objectMapper = objectMapper;
+	}
 
 	/**
 	 * Creates a list of schema-less SolrInputDocument objects from a JSON string.
@@ -111,8 +117,7 @@ public class JsonDocumentCreator implements SolrDocumentCreator {
 		List<SolrInputDocument> documents = new ArrayList<>();
 
 		try {
-			JsonMapper mapper = JsonMapper.builder().build();
-			JsonNode rootNode = mapper.readTree(json);
+			JsonNode rootNode = this.objectMapper.readTree(json);
 
 			if (rootNode.isArray()) {
 				for (JsonNode item : rootNode) {

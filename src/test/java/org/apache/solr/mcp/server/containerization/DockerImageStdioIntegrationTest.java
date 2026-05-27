@@ -84,8 +84,10 @@ class DockerImageStdioIntegrationTest {
 	private static final Logger log = LoggerFactory.getLogger(DockerImageStdioIntegrationTest.class);
 
 	// Docker image name and tag from build-info.properties
+	// (BuildInfoReader.getDockerImageName() already appends the
+	// solr.mcp.docker.image.tag.suffix system property internally.)
 	private static final String DOCKER_IMAGE = BuildInfoReader.getDockerImageName();
-	private static final String SOLR_IMAGE = System.getProperty("solr.test.image", "solr:9.9-slim");
+	private static final String SOLR_IMAGE = System.getProperty("solr.test.image");
 
 	// Network for container communication
 	private static final Network network = Network.newNetwork();
