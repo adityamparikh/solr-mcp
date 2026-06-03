@@ -455,6 +455,7 @@ See [docs/specs/graalvm-native-image.md](docs/specs/graalvm-native-image.md) for
 
 ## Documentation
 
+- [FAQ](docs/FAQ.md)
 - [Auth0 Setup (OAuth2 configuration)](security-docs/AUTH0_SETUP.md)
 - [GraalVM native image spec](docs/specs/graalvm-native-image.md)
 
