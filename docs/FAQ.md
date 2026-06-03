@@ -24,6 +24,8 @@ teaches an agent *when and how* to use it well.
 | Determinism      | Sampled from the model on every call       | Same input → same output                             |
 | Reuse            | Only by agents that load skills            | Any MCP client (Claude Desktop, MCP Inspector, other vendors) |
 | Security         | The model must get it right each call      | Hardcoded (XXE guards, size limits, OAuth2)          |
+| Upfront context  | One-line name + description (progressive disclosure) | Tool schemas — though lazy/deferred loading closes the gap |
+| Runtime context  | Raw payloads parsed in-context on each call | Compact, shaped typed records (parsing done off-context) |
 
 ### What a skill genuinely could absorb
 
@@ -65,6 +67,39 @@ raw HTTP calls would have to re-derive it (often imperfectly) on every call:
    `@PreAuthorize("isAuthenticated()")`, returns typed records, and behaves
    identically on every call. A skill's behavior is sampled from the model each
    time — fine for exploration, risky for an indexing or schema-mutation pipeline.
+
+### What about context cost — don't MCP servers occupy more context than skills?
+
+This is the strongest argument *for* skills, and it's worth stating plainly.
+Traditional MCP clients inject every connected server's tool definitions —
+names, descriptions, and full JSON input schemas — into the model's context at
+session start, whether or not those tools are used. Connect several servers and
+you can spend tens of thousands of tokens before the user asks anything. Skills
+use **progressive disclosure**: only a one-line name and description sit in
+context until the skill is actually invoked, at which point the body is read in.
+
+Two nuances keep this from being a knockout:
+
+1. **It's largely an artifact of older clients, and it's already being fixed.**
+   Lazy/deferred tool loading ("tool search") advertises only tool *names*
+   upfront and fetches a tool's full schema on demand, right before it's called.
+   Under that model, this server's ~11 tools cost roughly what a skill's
+   frontmatter costs upfront — so "MCP always occupies more context" is becoming
+   false.
+2. **Upfront cost is not total cost — and the server often wins at runtime.** A
+   skill talking to Solr over raw HTTP pulls large raw JSON payloads into context
+   and makes the model reason over them on every call, with tokens spent on each
+   curl-then-interpret round. An MCP tool returns a compact, *shaped* typed record
+   (`SearchResponse`, `SolrMetrics`) — the parsing and aggregation happened in
+   Java, off-context. For something like `get-collection-stats`, which stitches
+   three Solr endpoints together, the server can consume *less* total context than
+   a skill doing the same work in-loop.
+
+**Synthesis:** skills win on static/upfront footprint — most decisively when you
+have many capabilities and a client without lazy loading. MCP servers can win on
+runtime footprint by keeping raw payloads and multi-step logic out of context.
+Deferred tool loading is narrowing the upfront gap toward zero. For a single,
+focused server like this one, the upfront cost is modest either way.
 
 ### The product boundary
 
