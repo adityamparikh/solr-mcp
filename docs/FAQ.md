@@ -101,6 +101,33 @@ runtime footprint by keeping raw payloads and multi-step logic out of context.
 Deferred tool loading is narrowing the upfront gap toward zero. For a single,
 focused server like this one, the upfront cost is modest either way.
 
+### Delegate MCP work to a subagent to keep the main context clean
+
+A practical pattern that sidesteps much of the context debate: have the main
+agent **delegate MCP interactions to a subagent** rather than calling the tools
+itself. The subagent runs in its own isolated context window, does the
+multi-step work (load the tool schemas, call `search` / `index-*` /
+`get-collection-stats`, page through results, retry failures), and returns only
+a distilled summary to the main thread. The tool schemas, raw payloads, and
+call-by-call chatter stay in the subagent's context and never pollute the main
+one.
+
+This is especially worthwhile for this server's heavier workflows:
+
+- **Bulk indexing** — a subagent can drive the batch/individual-retry loop across
+  many documents and hand back just "indexed 4,812 of 4,815; 3 failures: …".
+- **Stats and health sweeps** — `get-collection-stats` across several collections
+  produces verbose metric trees; a subagent can fold them into a one-paragraph
+  health verdict.
+- **Schema introspection** — `get-schema` can be large; let a subagent read it and
+  report only the fields relevant to the task.
+
+Net effect: you get the determinism and safety of the MCP server *and* a context
+footprint closer to a skill's, because the verbose parts are quarantined in a
+throwaway context. It pairs naturally with a Solr skill — the skill teaches the
+subagent *how* to use the tools well, and the subagent keeps the cost off the
+main thread.
+
 ### The product boundary
 
 The MCP server is also a **product boundary**, not just a convenience for one
