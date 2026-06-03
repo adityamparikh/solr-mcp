@@ -15,6 +15,14 @@ best setup uses both.
 
 > "Skills describe the workflow. MCP provides the runner." — Block's Goose team
 
+Anthropic's own *Complete Guide to Building Skills for Claude* uses a kitchen
+analogy that captures it exactly:
+
+> "MCP provides the professional kitchen: access to tools, ingredients, and
+> equipment. Skills provide the recipes: step-by-step instructions on how to
+> create something valuable. Together, they enable users to accomplish complex
+> tasks without needing to figure out every step themselves."
+
 ### Background: what each thing actually is
 
 **MCP** (Model Context Protocol) is an open protocol, launched by Anthropic in
@@ -26,12 +34,15 @@ Build Rich-Context AI Apps with Anthropic*, taught by Anthropic's Elie Schoppik,
 for the canonical walkthrough.) This repository is one such server: it exposes
 Solr search, indexing, schema, and collection management as MCP tools.
 
-**Agent Skills**, which Anthropic opened as a standard in December 2025, are
-folders containing a `SKILL.md` file (YAML frontmatter + Markdown instructions,
-optionally bundling extra files and code). A skill is procedural knowledge —
-"when you hit this kind of problem, here's the approach." Its defining mechanism
-is **progressive disclosure**, which Anthropic describes as the "core design
-principle that makes Agent Skills flexible and scalable":
+**Agent Skills**, which Anthropic opened as a standard in December 2025, are —
+per the *Complete Guide to Building Skills for Claude* — "a folder containing:
+`SKILL.md` (required): Instructions in Markdown with YAML frontmatter;
+`scripts/` (optional): Executable code; `references/` (optional): Documentation
+loaded as needed; `assets/` (optional): Templates, fonts, icons used in output."
+A skill is procedural knowledge — "when you hit this kind of problem, here's the
+approach." Its defining mechanism is **progressive disclosure**, which Anthropic
+describes as the "core design principle that makes Agent Skills flexible and
+scalable":
 
 1. **Metadata** — at startup only each skill's `name` and `description` sit in
    the context window.
@@ -41,9 +52,24 @@ principle that makes Agent Skills flexible and scalable":
    code) loaded only when needed, so "the amount of context that can be bundled
    into a skill is effectively unbounded."
 
+The guide stresses two further design principles that matter here:
+**composability** — "Claude can load multiple skills simultaneously. Your skill
+should work well alongside others, not assume it's the only capability
+available" — and **portability** — "Skills work identically across Claude.ai,
+Claude Code, and API." The net effect of progressive disclosure, in the guide's
+words, is that it "minimizes token usage while maintaining specialized
+expertise."
+
 Anthropic itself frames the two as complementary, saying it will "explore how
 Skills can complement Model Context Protocol (MCP) servers by teaching agents
-more complex workflows that involve external tools and software."
+more complex workflows that involve external tools and software." The Skills
+guide spells out the division of labor for exactly the situation this repo is in
+— a team that already ships a server:
+
+> "MCP (Connectivity) … Connects Claude to your service … Provides real-time
+> data access and tool invocation … *What Claude can do*. Skills (Knowledge) …
+> Teaches Claude how to use your service effectively … Captures workflows and
+> best practices … *How Claude should do it*."
 
 ### The strongest case for "just use a skill"
 
@@ -241,6 +267,13 @@ Adapting Speakeasy's heuristic to this project:
 ### Bottom line
 
 The "skill *or* MCP" framing is, as Speakeasy puts it, a **false dichotomy**.
+And for a project that already ships a working server, Anthropic's Skills guide
+points the same way:
+
+> "If you already have a working MCP server, you've done the hard part. Skills
+> are the knowledge layer on top — capturing the workflows and best practices you
+> already know, so Claude can apply them consistently."
+
 For this repository:
 
 - **Keep the MCP server** for deterministic, security-sensitive, multi-step
@@ -262,6 +295,7 @@ want on a write path.
 
 - Anthropic — [Equipping agents for the real world with Agent Skills](https://www.anthropic.com/engineering/equipping-agents-for-the-real-world-with-agent-skills)
 - Anthropic — [Code execution with MCP: building more efficient AI agents](https://www.anthropic.com/engineering/code-execution-with-mcp)
+- Anthropic — [The Complete Guide to Building Skills for Claude](https://resources.anthropic.com/hubfs/The-Complete-Guide-to-Building-Skill-for-Claude.pdf) (PDF)
 - DeepLearning.AI — [MCP: Build Rich-Context AI Apps with Anthropic](https://learn.deeplearning.ai/courses/mcp-build-rich-context-ai-apps-with-anthropic/) (taught by Elie Schoppik)
 - Speakeasy — [Skills vs MCP, a false dichotomy](https://www.speakeasy.com/blog/skills-vs-mcp)
 - Cloudflare — [Code Mode](https://blog.cloudflare.com/code-mode/) (referenced by Anthropic)
