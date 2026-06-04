@@ -25,31 +25,15 @@ analogy that captures it exactly:
 
 ### Background: what each thing actually is
 
-**MCP** (Model Context Protocol) — open protocol from Anthropic (Nov 2024) for
-how LLM apps access *tools*, *resources*, and *prompt templates* over
-client/server.
-
-- One server, many clients (Claude Desktop, MCP Inspector, other vendors); can
-  run remote.
-- **This repo is an MCP server:** Solr search, indexing, schema, and collection
-  tools.
-- Canonical intro: DeepLearning.AI's *MCP: Build Rich-Context AI Apps with
-  Anthropic*.
-
-**Agent Skills** — open standard from Anthropic (Dec 2025). A skill is a folder
-of procedural knowledge: "when you hit this problem, here's the approach."
-
-- **Structure:** `SKILL.md` (required) + optional `scripts/`, `references/`,
-  `assets/`.
-- **Progressive disclosure** (3 levels): metadata (`name`/`description`) always
-  loaded → `SKILL.md` body loaded when relevant → linked files loaded only as
-  needed. "Minimizes token usage while maintaining specialized expertise."
-- **Composable:** many skills load at once. **Portable:** identical across
-  Claude.ai, Claude Code, API.
-
-**They're complementary, not rival.** Anthropic's own split: MCP =
-*connectivity* / what Claude *can* do; Skills = *knowledge* / how Claude *should*
-do it.
+- **MCP** (Model Context Protocol, Anthropic, Nov 2024) — protocol for how LLM
+  apps reach *tools*, *resources*, and *prompts* over client/server. One server,
+  many clients; can run remote. **This repo is one.**
+- **Agent Skills** (Anthropic, Dec 2025) — a folder (`SKILL.md` + optional
+  `scripts/`, `references/`, `assets/`) of procedural know-how, loaded by
+  **progressive disclosure**: metadata always in context → body when relevant →
+  files as needed. Composable and portable across Claude.ai, Code, and API.
+- **Complementary, not rival** — MCP = *connectivity* (what Claude **can** do);
+  Skills = *knowledge* (how Claude **should** do it).
 
 ### The strongest case for "just use a skill"
 
