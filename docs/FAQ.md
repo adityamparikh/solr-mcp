@@ -25,51 +25,31 @@ analogy that captures it exactly:
 
 ### Background: what each thing actually is
 
-**MCP** (Model Context Protocol) is an open protocol, launched by Anthropic in
-November 2024, that standardizes how LLM applications access context — *tools*,
-*resources*, and *prompt templates* — over a client/server architecture. The
-same server can be reused across many clients (Claude Desktop, MCP Inspector,
-other vendors) and deployed remotely. (See the DeepLearning.AI course *MCP:
-Build Rich-Context AI Apps with Anthropic*, taught by Anthropic's Elie Schoppik,
-for the canonical walkthrough.) This repository is one such server: it exposes
-Solr search, indexing, schema, and collection management as MCP tools.
+**MCP** (Model Context Protocol) — open protocol from Anthropic (Nov 2024) for
+how LLM apps access *tools*, *resources*, and *prompt templates* over
+client/server.
 
-**Agent Skills**, which Anthropic opened as a standard in December 2025, are —
-per the *Complete Guide to Building Skills for Claude* — "a folder containing:
-`SKILL.md` (required): Instructions in Markdown with YAML frontmatter;
-`scripts/` (optional): Executable code; `references/` (optional): Documentation
-loaded as needed; `assets/` (optional): Templates, fonts, icons used in output."
-A skill is procedural knowledge — "when you hit this kind of problem, here's the
-approach." Its defining mechanism is **progressive disclosure**, which Anthropic
-describes as the "core design principle that makes Agent Skills flexible and
-scalable":
+- One server, many clients (Claude Desktop, MCP Inspector, other vendors); can
+  run remote.
+- **This repo is an MCP server:** Solr search, indexing, schema, and collection
+  tools.
+- Canonical intro: DeepLearning.AI's *MCP: Build Rich-Context AI Apps with
+  Anthropic*.
 
-1. **Metadata** — at startup only each skill's `name` and `description` sit in
-   the context window.
-2. **Instructions** — when a skill looks relevant, the agent reads the full
-   `SKILL.md` into context.
-3. **Resources** — `SKILL.md` can point to additional files (and executable
-   code) loaded only when needed, so "the amount of context that can be bundled
-   into a skill is effectively unbounded."
+**Agent Skills** — open standard from Anthropic (Dec 2025). A skill is a folder
+of procedural knowledge: "when you hit this problem, here's the approach."
 
-The guide stresses two further design principles that matter here:
-**composability** — "Claude can load multiple skills simultaneously. Your skill
-should work well alongside others, not assume it's the only capability
-available" — and **portability** — "Skills work identically across Claude.ai,
-Claude Code, and API." The net effect of progressive disclosure, in the guide's
-words, is that it "minimizes token usage while maintaining specialized
-expertise."
+- **Structure:** `SKILL.md` (required) + optional `scripts/`, `references/`,
+  `assets/`.
+- **Progressive disclosure** (3 levels): metadata (`name`/`description`) always
+  loaded → `SKILL.md` body loaded when relevant → linked files loaded only as
+  needed. "Minimizes token usage while maintaining specialized expertise."
+- **Composable:** many skills load at once. **Portable:** identical across
+  Claude.ai, Claude Code, API.
 
-Anthropic itself frames the two as complementary, saying it will "explore how
-Skills can complement Model Context Protocol (MCP) servers by teaching agents
-more complex workflows that involve external tools and software." The Skills
-guide spells out the division of labor for exactly the situation this repo is in
-— a team that already ships a server:
-
-> "MCP (Connectivity) … Connects Claude to your service … Provides real-time
-> data access and tool invocation … *What Claude can do*. Skills (Knowledge) …
-> Teaches Claude how to use your service effectively … Captures workflows and
-> best practices … *How Claude should do it*."
+**They're complementary, not rival.** Anthropic's own split: MCP =
+*connectivity* / what Claude *can* do; Skills = *knowledge* / how Claude *should*
+do it.
 
 ### The strongest case for "just use a skill"
 
