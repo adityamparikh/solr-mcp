@@ -8,7 +8,7 @@ server exists to provide. Skills and MCP aren't rivals — they're complementary
 layers, and the strongest setup uses both.
 
 > "MCP provides the professional kitchen: access to tools, ingredients, and
-> equipment. Skills provide the recipes." — Anthropic, *Complete Guide to
+> equipment. Skills provide the recipes…" — Anthropic, *Complete Guide to
 > Building Skills for Claude*
 
 **The split** (Anthropic's own framing): MCP = *connectivity*, what Claude **can**
@@ -36,11 +36,13 @@ raw HTTP would re-derive it imperfectly every call:
   10 MB guards, and **XXE-hardened XML parsing**.
 - **Metric aggregation** — `get-collection-stats` folds Luke + Metrics APIs,
   normalizes shard names, and degrades gracefully on Solr 10.
-- **Determinism, auth, typed contracts** — every tool runs under
-  `@PreAuthorize` and returns the same typed record every time.
+- **Determinism, auth, typed contracts** — every tool is annotated
+  `@PreAuthorize` (enforced in HTTP mode) and returns the same typed record
+  every time.
 
-And at org scale: **auth** (the server authenticates server-side; the agent never
-holds raw secrets), **observability** (calls are logged and auditable), and
+And at org scale: **auth** (in HTTP mode the server authenticates server-side, so
+the agent never holds raw secrets), **observability** (calls are logged and
+auditable), and
 **no config drift** (update one server vs. every dev's skill file).
 
 > "The sandbox gives you capability. MCP gives you capability with guardrails."
@@ -66,7 +68,7 @@ holds raw secrets), **observability** (calls are logged and auditable), and
 |-------------------|--------------------------------|-------------------------------------------------|
 | Providing         | A pattern / process            | Access to a live service                        |
 | Content           | Static, team-curated           | Real-time data and side effects                 |
-| Auth              | None                           | Yes — server-side, agent never sees secrets     |
+| Auth              | None                           | Yes (HTTP/OAuth2); STDIO inherits OS-user trust |
 | Audit             | Not centrally observable       | Logged, rate-limitable, auditable               |
 | Determinism       | Sampled each call              | Same input → same output                        |
 | Reuse             | Skill-aware agents only        | Any MCP client (Claude Desktop, Inspector, …)   |
@@ -74,7 +76,7 @@ holds raw secrets), **observability** (calls are logged and auditable), and
 ### Bottom line
 
 > "If you already have a working MCP server, you've done the hard part. Skills are
-> the knowledge layer on top." — Anthropic, *Complete Guide to Building Skills*
+> the knowledge layer on top…" — Anthropic, *Complete Guide to Building Skills*
 
 **Keep the server** for deterministic, security-sensitive, multi-step operations
 and for non-Claude clients (it's an Apache incubating project for *any* MCP
