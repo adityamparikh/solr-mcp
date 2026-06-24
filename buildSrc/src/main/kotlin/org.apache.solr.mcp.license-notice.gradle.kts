@@ -41,6 +41,7 @@
 import org.apache.solr.mcp.build.GenerateBinaryLicense
 import org.apache.solr.mcp.build.GenerateBinaryNotice
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import java.io.File
 
 // The project's source-form LICENSE/NOTICE at the repo root (the plain Apache-2.0 text
 // and the base NOTICE). They are bundled as-is into the non-fat jars, and are also the
@@ -93,7 +94,23 @@ val generateBinaryLicense =
         group = "documentation"
         dependsOn("cyclonedxBom")
         baseLicense.set(licenseFile)
-        sbom.set(layout.buildDirectory.file("reports/application.cdx.json"))
+        // Locate the SBOM from whatever file `cyclonedxBom` actually produces under
+        // build/reports rather than hardcoding a single name. Spring Boot configures the
+        // cyclonedx plugin to emit `application.cdx.json`, but that depends on the plugin
+        // version Spring Boot recognizes; an unrecognized version falls back to the plugin
+        // default (`bom.json`, possibly under a `cyclonedx/` subdir). Resolving lazily here
+        // — at execution time, after the `dependsOn("cyclonedxBom")` producer has run —
+        // keeps `generateBinaryLicense` working across cyclonedx/Spring Boot version drift
+        // without breaking configuration if the path moves.
+        sbom.set(layout.file(provider {
+            val reportsDir = layout.buildDirectory.dir("reports").get().asFile
+            sequenceOf("application.cdx.json", "bom.json")
+                .map { reportsDir.resolve(it) }
+                .firstOrNull(File::exists)
+                ?: reportsDir.walkTopDown()
+                    .firstOrNull { it.isFile && (it.name.endsWith(".cdx.json") || it.name == "bom.json") }
+                ?: reportsDir.resolve("application.cdx.json")
+        }))
         bundledCoordinates.set(shippedCoordinates)
         outputFile.set(layout.buildDirectory.file("generated/license/LICENSE"))
     }
