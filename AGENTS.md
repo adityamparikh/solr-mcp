@@ -121,7 +121,7 @@ Configuration files: `application-stdio.properties`, `application-http.propertie
 ### SBOM Architecture
 
 CycloneDX SBOM generation is wired by applying the `org.cyclonedx.bom` plugin
-(version 3.2.4, matching what Spring Initializr ships for Spring Boot 4.1.0).
+(version 2.4.1, matching what Spring Initializr ships for Spring Boot 3.5.14).
 Spring Boot's `CycloneDxPluginAction` auto-configures `cyclonedxBom` and makes
 the bootJar embed the result at `META-INF/sbom/application.cdx.json`; the
 actuator serves it at `/actuator/sbom/application` in the `http` profile
