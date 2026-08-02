@@ -259,7 +259,7 @@ Standard debugging works normally:
        description = "What this tool does"
    )
    public String myTool(
-       @McpToolParameter(description = "Parameter description")
+       @McpToolParam(description = "Parameter description")
        String param
    ) {
        // Implementation
@@ -270,8 +270,8 @@ Standard debugging works normally:
 
 ### Adding a New Document Format
 
-1. Create a new class implementing `IndexingDocumentCreator`
-2. Register in `SolrDocumentCreator` factory
+1. Create a new class implementing `SolrDocumentCreator` (the format interface)
+2. Register it with the `IndexingDocumentCreator` orchestrator
 3. Add tests
 4. Update documentation
 
@@ -312,7 +312,7 @@ Analyze with Java Mission Control.
 The project uses GitHub Actions for CI/CD. See:
 
 - `.github/workflows/build-and-publish.yml` - Build, test, and publish Docker images
-- `.github/workflows/publish-mcp.yml` - Publish to the MCP Registry on version tags
+- `.github/workflows/release-publish.yml` - the `publish-mcp-registry` job publishes to the MCP Registry after a release vote passes
 
 Local CI simulation:
 

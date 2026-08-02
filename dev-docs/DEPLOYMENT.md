@@ -97,7 +97,7 @@ docker run -i --rm \
 ### Workflows
 
 - `.github/workflows/build-and-publish.yml` — Build, test, and publish Docker images
-- `.github/workflows/publish-mcp.yml` — Publish to the Model Context Protocol Registry on version tags
+- `.github/workflows/release-publish.yml` — the `publish-mcp-registry` job publishes to the Model Context Protocol Registry after a release vote passes
 
 ### Docker image publishing
 
@@ -118,7 +118,7 @@ To publish images, use Jib from your local machine or set up your own workflow:
 
 ### MCP Registry Publishing
 
-`.github/workflows/publish-mcp.yml` publishes to the Model Context Protocol Registry.
+The `publish-mcp-registry` job in `.github/workflows/release-publish.yml` publishes to the Model Context Protocol Registry.
 
 **Triggers:**
 - Version tags (e.g., `v0.1.0`)

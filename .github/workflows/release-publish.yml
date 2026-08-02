@@ -537,9 +537,17 @@ jobs:
                 VERSION="${{ steps.mcp_version.outputs.version }}"
                 # Update the top-level server version (e.g., 1.2.3)
                 jq --arg v "$VERSION" '.version = $v' server.json > server.json.tmp
-                # Update package version to match GA release (no -SNAPSHOT suffix)
-                jq --arg v "$VERSION" '.packages[0].version = $v' server.json.tmp > server.json
+                # Update EVERY package version to match the GA release. Rewriting
+                # only packages[0] left the other package on -SNAPSHOT, so the
+                # registry entry advertised an image tag that is never published.
+                jq --arg v "$VERSION" '.packages[].version = $v' server.json.tmp > server.json
                 rm server.json.tmp
+                # Fail if any -SNAPSHOT version survived the rewrite
+                if grep -q 'SNAPSHOT' server.json; then
+                  echo "ERROR: server.json still contains a SNAPSHOT version after rewrite" >&2
+                  cat server.json >&2
+                  exit 1
+                fi
                 # Show the final server.json for auditing
                 cat server.json
 
