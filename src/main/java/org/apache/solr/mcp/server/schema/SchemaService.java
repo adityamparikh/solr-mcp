@@ -185,7 +185,10 @@ public class SchemaService {
 		try {
 			return toJson(objectMapper, getSchema(collection));
 		} catch (Exception e) {
-			return "{\"error\": \"" + e.getMessage() + "\"}";
+			// Serialise via Jackson rather than concatenating: an exception message
+			// containing a quote, backslash or newline would otherwise emit invalid
+			// JSON to the MCP client.
+			return toJson(objectMapper, Map.of("error", String.valueOf(e.getMessage())));
 		}
 	}
 

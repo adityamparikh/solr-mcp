@@ -144,27 +144,43 @@ jobs:
 
       - name: Build and publish Docker image to apache/solr-mcp-nightly
         if: ${{ !inputs.skip_docker }}
+        env:
+          # Jib reads these directly; -Djib.to.auth.* would expose the token
+          # in the process argument list on the runner.
+          JIB_TO_AUTH_USERNAME: ${{ secrets.DOCKERHUB_APACHE_USERNAME }}
+          JIB_TO_AUTH_PASSWORD: ${{ secrets.DOCKERHUB_APACHE_TOKEN }}
+          NIGHTLY_VERSION: ${{ steps.version.outputs.version }}
         run: |
+          set -euo pipefail
           # Build and push to apache/solr-mcp-nightly
           # Note: Requires DOCKERHUB_APACHE_USERNAME and DOCKERHUB_APACHE_TOKEN secrets
           # These should be set up with Apache PMC credentials
-          if [[ -n "${{ secrets.DOCKERHUB_APACHE_USERNAME }}" ]]; then
-            ./gradlew jib \
-              -Djib.to.image=apache/solr-mcp-nightly:${{ steps.version.outputs.version }} \
-              -Djib.to.auth.username=${{ secrets.DOCKERHUB_APACHE_USERNAME }} \
-              -Djib.to.auth.password=${{ secrets.DOCKERHUB_APACHE_TOKEN }} \
-              -Djib.to.tags=${{ steps.version.outputs.version }},latest-nightly
+          if [[ -z "${JIB_TO_AUTH_USERNAME}" || -z "${JIB_TO_AUTH_PASSWORD}" ]]; then
+            echo "Apache Docker Hub credentials not configured - skipping nightly image publish"
+            exit 0
           fi
+          ./gradlew jib \
+            -Djib.to.image="apache/solr-mcp-nightly:${NIGHTLY_VERSION}" \
+            -Djib.to.tags="${NIGHTLY_VERSION},latest-nightly"
 
       - name: Upload to Apache Nightlies
-        if: ${{ secrets.APACHE_NIGHTLIES_USER != '' }}
+        # The `secrets` context is not available in a step-level `if:`, so the
+        # credential guard has to live inside the step body.
+        env:
+          APACHE_NIGHTLIES_USER: ${{ secrets.APACHE_NIGHTLIES_USER }}
+          NIGHTLY_DATE: ${{ steps.version.outputs.date }}
         run: |
+          set -euo pipefail
+          if [[ -z "${APACHE_NIGHTLIES_USER}" ]]; then
+            echo "APACHE_NIGHTLIES_USER not configured - skipping nightlies upload"
+            exit 0
+          fi
           # Upload to Apache nightlies infrastructure
           # Requires APACHE_NIGHTLIES_USER and APACHE_NIGHTLIES_KEY secrets
           # These are typically available to Apache committers
 
           # Create directory structure
-          UPLOAD_DIR="solr/mcp/${{ steps.version.outputs.date }}"
+          UPLOAD_DIR="solr/mcp/${NIGHTLY_DATE}"
 
           # Use rsync or scp to upload to nightlies.apache.org
           # This is a placeholder - actual implementation depends on Apache infra access
@@ -178,6 +194,9 @@ jobs:
         # softprops/action-gh-release.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Tag on the full nightly version (nightly-<date>-<sha>) rather than the
+          # date alone, so a second run on the same day does not collide.
+          NIGHTLY_TAG: ${{ steps.version.outputs.version }}
           NIGHTLY_DATE: ${{ steps.version.outputs.date }}
         run: |
           cat > "${RUNNER_TEMP}/nightly-notes.md" <<'NOTES'
@@ -192,11 +211,11 @@ jobs:
           ```
 
           ### Source Distribution
-          - [solr-mcp-${{ steps.version.outputs.version }}-src.tar.gz](https://github.com/${{ github.repository }}/releases/download/nightly-${{ steps.version.outputs.date }}/solr-mcp-${{ steps.version.outputs.version }}-src.tar.gz)
+          - [solr-mcp-${{ steps.version.outputs.version }}-src.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.version }}/solr-mcp-${{ steps.version.outputs.version }}-src.tar.gz)
 
           **Note**: This is a nightly build and not an official Apache release.
           NOTES
-          gh release create "nightly-${NIGHTLY_DATE}" \
+          gh release create "${NIGHTLY_TAG}" \
             --title "Nightly Build ${NIGHTLY_DATE}" \
             --prerelease \
             --notes-file "${RUNNER_TEMP}/nightly-notes.md" \
@@ -208,7 +227,10 @@ jobs:
         run: |
           # Keep only the last 7 nightly builds
           # This helps manage storage and keeps releases clean
-          gh release list --limit 100 | grep "^nightly-" | tail -n +8 | cut -f1 | while read tag; do
+          # Select the tag field explicitly - gh's default table output is a
+          # presentation format and its column layout is not a stable contract.
+          gh release list --limit 100 --json tagName --jq '.[].tagName' \
+            | grep '^nightly-' | sort -r | tail -n +8 | while read -r tag; do
             echo "Deleting old nightly release: $tag"
             gh release delete "$tag" --yes --cleanup-tag
           done

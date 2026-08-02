@@ -338,36 +338,45 @@ jobs:
             # Jib creates optimized, layered images without Docker daemon
             # Each tag is built and pushed separately
             -   name: Build and publish to GitHub Container Registry
+                env:
+                    # Jib reads these directly; -Djib.to.auth.* would expose the
+                    # token in the process argument list on the runner.
+                    JIB_TO_AUTH_USERNAME: ${{ github.actor }}
+                    JIB_TO_AUTH_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+                    TAGS: ${{ steps.meta.outputs.tags }}
+                    OWNER_LC: ${{ steps.repo.outputs.owner_lc }}
                 run: |
-                    TAGS="${{ steps.meta.outputs.tags }}"
+                    set -euo pipefail
                     IFS=',' read -ra TAG_ARRAY <<< "$TAGS"
 
                     # Build and push each tag to GHCR
                     # Jib automatically handles multi-platform builds (amd64, arm64)
                     for TAG in "${TAG_ARRAY[@]}"; do
-                      echo "Building and pushing ghcr.io/${{ steps.repo.outputs.owner_lc }}/solr-mcp:$TAG"
-                      ./gradlew jib \
-                        -Djib.to.image=ghcr.io/${{ steps.repo.outputs.owner_lc }}/solr-mcp:$TAG \
-                        -Djib.to.auth.username=${{ github.actor }} \
-                        -Djib.to.auth.password=${{ secrets.GITHUB_TOKEN }}
+                      echo "Building and pushing ghcr.io/${OWNER_LC}/solr-mcp:${TAG}"
+                      ./gradlew jib -Djib.to.image="ghcr.io/${OWNER_LC}/solr-mcp:${TAG}"
                     done
 
             # Build and publish images to Docker Hub
-            # Only runs if Docker Hub secrets are configured
-            # Gracefully skips if secrets are not available
+            # Only runs if Docker Hub secrets are configured; the `secrets` context
+            # is not available in a step-level `if:`, so the guard has to be an env
+            # check inside the step (an `if: secrets.X != ''` is always false).
             -   name: Build and publish to Docker Hub
-                if: secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != ''
+                env:
+                    JIB_TO_AUTH_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+                    JIB_TO_AUTH_PASSWORD: ${{ secrets.DOCKERHUB_TOKEN }}
+                    TAGS: ${{ steps.meta.outputs.tags }}
                 run: |
-                    TAGS="${{ steps.meta.outputs.tags }}"
+                    set -euo pipefail
+                    if [[ -z "${JIB_TO_AUTH_USERNAME}" || -z "${JIB_TO_AUTH_PASSWORD}" ]]; then
+                      echo "Docker Hub credentials not configured - skipping Docker Hub publish"
+                      exit 0
+                    fi
                     IFS=',' read -ra TAG_ARRAY <<< "$TAGS"
 
                     # Build and push each tag to Docker Hub
                     for TAG in "${TAG_ARRAY[@]}"; do
-                      echo "Building and pushing ${{ secrets.DOCKERHUB_USERNAME }}/solr-mcp:$TAG"
-                      ./gradlew jib \
-                        -Djib.to.image=${{ secrets.DOCKERHUB_USERNAME }}/solr-mcp:$TAG \
-                        -Djib.to.auth.username=${{ secrets.DOCKERHUB_USERNAME }} \
-                        -Djib.to.auth.password=${{ secrets.DOCKERHUB_TOKEN }}
+                      echo "Building and pushing ${JIB_TO_AUTH_USERNAME}/solr-mcp:${TAG}"
+                      ./gradlew jib -Djib.to.image="${JIB_TO_AUTH_USERNAME}/solr-mcp:${TAG}"
                     done
 
             # Create a summary of published images
