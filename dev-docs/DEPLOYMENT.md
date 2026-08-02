@@ -336,8 +336,12 @@ The server exposes Spring Boot Actuator endpoints:
 # Health check
 curl http://localhost:8080/actuator/health
 
-# Build info
-curl http://localhost:8080/actuator/info
+# Build info. Only /actuator/health is anonymous; every other actuator
+# endpoint requires authentication when HTTP security is enabled (the default),
+# so pass a bearer token:
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/actuator/info
+
+# ...or run with HTTP_SECURITY_ENABLED=false for a local unsecured setup.
 ```
 
 ### Docker Health Check

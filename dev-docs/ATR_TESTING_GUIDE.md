@@ -332,7 +332,10 @@ jobs:
 
         steps:
             -   name: Request PMC verification
-                uses: trstringer/manual-approval@v1
+                # ASF's Actions allow-list matches third-party actions by exact
+                # commit SHA, not by tag - a mutable @v1 ref makes the workflow
+                # fail at startup. Pin the reviewed SHA before using this.
+                uses: trstringer/manual-approval@<reviewed-commit-sha> # v1
                 with:
                     approvers: apache-pmc-members  # Replace with actual PMC GitHub team
                     minimum-approvals: 1

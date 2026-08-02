@@ -46,8 +46,9 @@ docker compose up -d
 ```
 
 This starts a Solr instance in SolrCloud mode with ZooKeeper and creates two sample collections:
-- `books` - Collection with sample book data
-- `films` - Collection with sample film data
+- `books` - Created empty. The books.csv download and post are commented out in
+  `init-solr.sh`, so use it as a scratch collection or uncomment those lines.
+- `films` - Collection populated with Solr's sample film data
 
 ### Run the Server
 

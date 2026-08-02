@@ -163,17 +163,35 @@ public class SolrConfig {
 	 * @param properties
 	 *            the injected Solr configuration properties containing connection
 	 *            URL
+	 * @param jsonResponseParser
+	 *            the parser that converts Solr's JSON responses into the NamedList
+	 *            tree SolrJ expects
 	 * @return configured SolrClient instance ready for use in application services
 	 * @see HttpJdkSolrClient.Builder
 	 * @see SolrConfigurationProperties#url()
+	 */
+	@Bean
+	SolrClient solrClient(SolrConfigurationProperties properties, JsonResponseParser jsonResponseParser) {
+		return buildSolrClient(properties, jsonResponseParser);
+	}
+
+	/**
+	 * Response parser used by {@link #solrClient}, requesting {@code wt=json} and
+	 * converting the response into SolrJ's
+	 * {@link org.apache.solr.common.util.NamedList} tree.
+	 *
+	 * @param objectMapper
+	 *            the application's Jackson mapper, reused so Solr responses are
+	 *            parsed with the same configuration as the rest of the app
+	 * @return the JSON response parser
 	 */
 	@Bean
 	JsonResponseParser jsonResponseParser(ObjectMapper objectMapper) {
 		return new JsonResponseParser(objectMapper);
 	}
 
-	@Bean
-	SolrClient solrClient(SolrConfigurationProperties properties, JsonResponseParser jsonResponseParser) {
+	private static SolrClient buildSolrClient(SolrConfigurationProperties properties,
+			JsonResponseParser jsonResponseParser) {
 		// Normalise against the URL's *path* only. Testing the whole URL string
 		// would see the "/solr/" inside an authority such as http://solr/ and
 		// wrongly conclude the path was already present.
