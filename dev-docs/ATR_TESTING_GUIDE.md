@@ -127,8 +127,8 @@ cd build/distributions
 sha512sum solr-mcp-0.0.1-test-rc1-src.tar.gz > solr-mcp-0.0.1-test-rc1-src.tar.gz.sha512
 sha256sum solr-mcp-0.0.1-test-rc1-src.tar.gz > solr-mcp-0.0.1-test-rc1-src.tar.gz.sha256
 
-# 4. Verify artifacts
-ls -lh build/distributions/
+# 4. Verify artifacts (still inside build/distributions from the cd above)
+ls -lh
 sha512sum -c solr-mcp-0.0.1-test-rc1-src.tar.gz.sha512
 ```
 
