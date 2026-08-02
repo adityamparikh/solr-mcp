@@ -4,12 +4,19 @@ Status: **Partially superseded** — this spec describes the original plan
 (Jib for JVM images, `bootBuildImage` for native images, STDIO profile only
 for native). The current state has evolved:
 
-- Jib has been **dropped**. Both JVM and native images are now built with
-  `bootBuildImage` (Paketo Cloud Native Buildpacks).
-- Native AOT now processes both `stdio` and `http` profiles, so the native
-  image serves both modes via the runtime `PROFILES` env var.
-- The JVM Paketo image suffers from stdout pollution (libjvm helpers) and is
-  therefore HTTP-only; the native image is the recommended STDIO artifact.
+- **Jib builds the JVM image** (`solr-mcp:<v>`), and that single image serves
+  **both** stdio and http — Jib's plain `java -jar` entrypoint keeps stdout
+  clean, so the runtime `PROFILES` env var selects the transport.
+- **Paketo `bootBuildImage` builds the native images**, one per profile:
+  `solr-mcp:<v>-native-stdio` and `solr-mcp:<v>-native-http`. Spring AOT bakes
+  `spring.main.web-application-type` into the binary, so activating both
+  profiles at AOT time picks `servlet` and forces Tomcat regardless of the
+  runtime `PROFILES` value — hence one native image per transport, not one
+  that serves both.
+- **Paketo's JVM image is unsuitable for stdio**: its `libjvm` helpers write
+  status lines to stdout before the JVM starts, breaking MCP's JSON-RPC stream
+  ([paketo-buildpacks/libjvm#482](https://github.com/paketo-buildpacks/libjvm/issues/482)).
+  That is why the JVM image uses Jib rather than Paketo.
 
 See `CLAUDE.md` (Image × Mode matrix) and `README.md` (Building Docker images)
 for the current commands and tradeoffs. The historical content below is kept
