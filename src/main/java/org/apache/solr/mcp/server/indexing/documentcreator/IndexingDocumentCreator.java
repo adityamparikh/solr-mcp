@@ -77,7 +77,8 @@ public class IndexingDocumentCreator {
 	 * class.
 	 *
 	 * @param json
-	 *            JSON string containing document data (must be an array)
+	 *            a JSON object (indexed as one document) or an array of JSON
+	 *            objects (one document each)
 	 * @return list of SolrInputDocument objects ready for indexing
 	 * @throws DocumentProcessingException
 	 *             if JSON parsing fails or the structure is invalid

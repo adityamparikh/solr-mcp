@@ -23,6 +23,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import java.io.IOException;
+import java.lang.reflect.Parameter;
 import java.util.List;
 import java.util.Map;
 import org.apache.solr.client.solrj.SolrClient;
@@ -34,6 +35,7 @@ import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.SolrDocumentList;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledInNativeImage;
+import org.springaicommunity.mcp.annotation.McpToolParam;
 
 /**
  * Unit tests for SearchService with mocked SolrClient.
@@ -354,6 +356,27 @@ class SearchServiceTest {
 				null, null, null, List.of(Map.of("item", "price", "order", "ascending")), null, null));
 		assertTrue(badOrder.getMessage().contains("ascending"), badOrder.getMessage());
 		assertTrue(badOrder.getMessage().contains("asc"), "Should state the accepted values");
+	}
+
+	/**
+	 * The tool schema is what an LLM reads <em>before</em> calling; a good runtime
+	 * error only helps on the retry. "Solr sort parameter" is actively misleading
+	 * here, because Solr's own sort syntax is the string "field asc" while this
+	 * tool takes a map keyed by "item" and "order".
+	 */
+	@Test
+	void searchTool_SortClausesParam_ShouldDocumentTheMapShape() throws Exception {
+		Parameter sortParam = java.util.Arrays.stream(SearchService.class.getMethods())
+				.filter(m -> m.getName().equals("search")).findFirst().orElseThrow().getParameters()[4];
+
+		String description = sortParam.getAnnotation(McpToolParam.class).description();
+
+		assertTrue(description.contains(SearchService.SORT_ITEM),
+				"Should name the field key '" + SearchService.SORT_ITEM + "': " + description);
+		assertTrue(description.contains(SearchService.SORT_ORDER),
+				"Should name the order key '" + SearchService.SORT_ORDER + "': " + description);
+		assertTrue(description.contains("asc") && description.contains("desc"),
+				"Should state the accepted order values: " + description);
 	}
 
 	@Test

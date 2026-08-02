@@ -158,6 +158,16 @@ class CsvIndexingTest {
 		// Blank input has no header row, so it can only ever yield zero documents.
 		// Rejecting it distinguishes "you sent nothing" from "nothing matched".
 		assertThatThrownBy(() -> indexingDocumentCreator.createSchemalessDocumentsFromCsv(blank))
-				.isInstanceOf(DocumentProcessingException.class).hasMessageContaining("CSV input cannot be empty");
+				.isInstanceOf(DocumentProcessingException.class)
+				.hasMessageContaining("CSV input cannot be null or empty");
+	}
+
+	@Test
+	void testCreateSchemalessDocumentsFromCsvWithNullInput() {
+		// Parity with the XML and JSON creators: a null yields a correctable
+		// DocumentProcessingException, not a raw NullPointerException.
+		assertThatThrownBy(() -> indexingDocumentCreator.createSchemalessDocumentsFromCsv(null))
+				.isInstanceOf(DocumentProcessingException.class)
+				.hasMessageContaining("CSV input cannot be null or empty");
 	}
 }

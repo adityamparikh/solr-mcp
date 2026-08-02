@@ -29,6 +29,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Pattern;
 import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrRequest;
 import org.apache.solr.client.solrj.SolrServerException;
@@ -151,8 +152,7 @@ public class CollectionService {
 	 * {@code _shard1} or {@code _shard1_replica_n1}. Anchored so that collection
 	 * names merely containing "_shard" are left intact.
 	 */
-	private static final java.util.regex.Pattern SHARD_SUFFIX_PATTERN = java.util.regex.Pattern
-			.compile("_shard\\d+(_replica.*)?$");
+	private static final Pattern SHARD_SUFFIX_PATTERN = Pattern.compile("_shard\\d+(_replica.*)?$");
 
 	/** Request parameter name for specifying response writer type */
 	private static final String WT_PARAM = "wt";
@@ -903,11 +903,12 @@ public class CollectionService {
 	 * <p>
 	 * <strong>Extraction Logic:</strong>
 	 *
-	 * <ul>
-	 * <li>Detects shard patterns containing the {@value #SHARD_SUFFIX} suffix
-	 * <li>Returns the substring before the shard identifier
-	 * <li>Returns the original string if no shard pattern is detected
-	 * </ul>
+	 * <p>
+	 * SolrCloud names its cores {@code <collection>_shard<N>[_replica_<type><M>]}.
+	 * Only that suffix is stripped, and only where it is <em>anchored to the
+	 * end</em> of the name. Matching a bare "{@value #SHARD_SUFFIX}" anywhere in
+	 * the string would truncate legitimate collection names, and a shard token with
+	 * no number is not a core name at all.
 	 *
 	 * <p>
 	 * <strong>Examples:</strong>
@@ -916,12 +917,16 @@ public class CollectionService {
 	 * <li>"films_shard1_replica_n1" → "films"
 	 * <li>"products_shard2_replica_n3" → "products"
 	 * <li>"simple_collection" → "simple_collection" (unchanged)
+	 * <li>"orders_shard_archive" → "orders_shard_archive" (unchanged - no shard
+	 * number, so not a core name)
+	 * <li>"data_shard1_shard2_replica_n1" → "data_shard1" (a collection whose own
+	 * name ends in "_shard1"; only the trailing core suffix is stripped)
 	 * </ul>
 	 *
 	 * @param collectionOrShard
 	 *            the collection or shard name to parse
-	 * @return the extracted collection name, or the original string if no shard
-	 *         pattern found
+	 * @return the extracted collection name, or the original string if no anchored
+	 *         shard/replica suffix is present
 	 */
 	String extractCollectionName(String collectionOrShard) {
 		if (collectionOrShard == null || collectionOrShard.isEmpty()) {

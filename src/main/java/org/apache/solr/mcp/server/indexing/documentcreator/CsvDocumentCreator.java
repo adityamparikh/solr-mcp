@@ -105,8 +105,11 @@ public class CsvDocumentCreator implements SolrDocumentCreator {
 	 * @see FieldNameSanitizer#sanitizeFieldName(String)
 	 */
 	public List<SolrInputDocument> create(String csv) throws DocumentProcessingException {
-		if (csv.isBlank()) {
-			throw new DocumentProcessingException("CSV input cannot be empty");
+		// Defensive null check for parity with the XML and JSON creators: an MCP
+		// client that omits the argument must get a correctable
+		// DocumentProcessingException, not a raw NullPointerException.
+		if (csv == null || csv.isBlank()) {
+			throw new DocumentProcessingException("CSV input cannot be null or empty");
 		}
 		if (csv.getBytes(StandardCharsets.UTF_8).length > MAX_INPUT_SIZE_BYTES) {
 			throw new DocumentProcessingException(

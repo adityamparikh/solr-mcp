@@ -258,7 +258,12 @@ public class SearchService {
 			@McpToolParam(description = "Solr fq parameter", required = false) @Nullable List<String> filterQueries,
 			@McpToolParam(description = "Solr facet fields", required = false) @Nullable List<String> facetFields,
 			@McpToolParam(
-					description = "Solr sort parameter",
+					description = "Sort order, as a list of maps. Each map needs an '" + SORT_ITEM
+							+ "' key holding the field name and an '" + SORT_ORDER
+							+ "' key holding 'asc' or 'desc'. Results are sorted by the clauses in the order given. "
+							+ "Example: [{\"" + SORT_ITEM + "\":\"price\",\"" + SORT_ORDER + "\":\"asc\"},{\""
+							+ SORT_ITEM + "\":\"name\",\"" + SORT_ORDER + "\":\"desc\"}]. "
+							+ "Note this is not Solr's own \"field asc\" sort string.",
 					required = false) @Nullable List<Map<String, String>> sortClauses,
 			@McpToolParam(description = "Starting offset for pagination", required = false) @Nullable Integer start,
 			@McpToolParam(description = "Number of rows to return", required = false) @Nullable Integer rows)

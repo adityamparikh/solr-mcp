@@ -52,7 +52,21 @@ class JsonIndexingTest {
 	@ValueSource(strings = {"", "   ", "\n\t "})
 	void createFromJson_WithBlankInput_ShouldReject(String blank) {
 		assertThatThrownBy(() -> indexingDocumentCreator.createSchemalessDocumentsFromJson(blank))
-				.isInstanceOf(DocumentProcessingException.class).hasMessageContaining("JSON input cannot be empty");
+				.isInstanceOf(DocumentProcessingException.class)
+				.hasMessageContaining("JSON input cannot be null or empty");
+	}
+
+	/**
+	 * Null must fail the same way the other two formats do. XML already answered a
+	 * null with a DocumentProcessingException; JSON and CSV threw a raw
+	 * NullPointerException, which surfaces to an MCP client as an opaque internal
+	 * error rather than a correctable one.
+	 */
+	@Test
+	void createFromJson_WithNullInput_ShouldRejectLikeTheOtherFormats() {
+		assertThatThrownBy(() -> indexingDocumentCreator.createSchemalessDocumentsFromJson(null))
+				.isInstanceOf(DocumentProcessingException.class)
+				.hasMessageContaining("JSON input cannot be null or empty");
 	}
 
 	@ParameterizedTest

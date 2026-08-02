@@ -75,11 +75,14 @@ public class JsonDocumentCreator implements SolrDocumentCreator {
 	 * <ul>
 	 * <li><strong>Nested Objects</strong>: Flattened using underscore notation
 	 * (e.g., "user.name" → "user_name")
-	 * <li><strong>Arrays</strong>: Non-object arrays converted to multi-valued
-	 * fields
+	 * <li><strong>Arrays</strong>: Scalar elements converted to multi-valued fields
 	 * <li><strong>Null Values</strong>: Ignored and not indexed
-	 * <li><strong>Object Arrays</strong>: Skipped to avoid complex nested
-	 * structures
+	 * <li><strong>Objects and nested arrays inside a field array</strong>: Skipped
+	 * to avoid complex nested structures - see
+	 * {@link #processArrayField(SolrInputDocument, JsonNode, String)}
+	 * <li><strong>Non-objects at the top level</strong>: Rejected, not skipped -
+	 * flattening one yields an empty document, so accepting it would index nothing
+	 * and still report success
 	 * </ul>
 	 *
 	 * <p>
@@ -99,7 +102,8 @@ public class JsonDocumentCreator implements SolrDocumentCreator {
 	 * }</pre>
 	 *
 	 * @param json
-	 *            JSON string containing document data (must be an array)
+	 *            a JSON object (indexed as one document) or an array of JSON
+	 *            objects (one document each)
 	 * @return list of SolrInputDocument objects ready for indexing
 	 * @throws DocumentProcessingException
 	 *             if JSON parsing fails, input validation fails, or the structure
@@ -109,8 +113,11 @@ public class JsonDocumentCreator implements SolrDocumentCreator {
 	 * @see FieldNameSanitizer#sanitizeFieldName(String)
 	 */
 	public List<SolrInputDocument> create(String json) throws DocumentProcessingException {
-		if (json.isBlank()) {
-			throw new DocumentProcessingException("JSON input cannot be empty");
+		// Defensive null check for parity with the XML and CSV creators: an MCP
+		// client that omits the argument must get a correctable
+		// DocumentProcessingException, not a raw NullPointerException.
+		if (json == null || json.isBlank()) {
+			throw new DocumentProcessingException("JSON input cannot be null or empty");
 		}
 		if (json.getBytes(StandardCharsets.UTF_8).length > MAX_INPUT_SIZE_BYTES) {
 			throw new DocumentProcessingException(
@@ -218,8 +225,17 @@ public class JsonDocumentCreator implements SolrDocumentCreator {
 	}
 
 	/**
-	 * Processes a JSON array field and adds its non-object elements to the
-	 * specified field in the given SolrInputDocument.
+	 * Processes a JSON array field and adds its scalar elements to the specified
+	 * field in the given SolrInputDocument.
+	 *
+	 * <p>
+	 * <strong>Container elements are silently dropped.</strong> Objects and nested
+	 * arrays have no scalar representation - {@code asString()} on a container node
+	 * throws - so {@code {"tags":[["a"],"b"]}} indexes {@code tags=["b"]} and the
+	 * nested array is lost. This mirrors the long-standing treatment of object
+	 * elements. Note the asymmetry with a <em>top-level</em> array, where a
+	 * non-object element is rejected outright rather than dropped: there, dropping
+	 * would silently discard a whole document.
 	 *
 	 * @param doc
 	 *            the SolrInputDocument to which the processed field will be added
