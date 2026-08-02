@@ -309,6 +309,54 @@ class SearchServiceTest {
 	}
 
 	@Test
+	void search_WithValidSortClauses_ShouldSetSortsInOrder() throws Exception {
+		SolrClient mockClient = mock(SolrClient.class);
+		QueryResponse mockResponse = mock(QueryResponse.class);
+		when(mockResponse.getResults()).thenReturn(createMockDocumentList());
+		when(mockResponse.getFacetFields()).thenReturn(null);
+		when(mockClient.query(eq("test_collection"), any(SolrQuery.class))).thenAnswer(invocation -> {
+			SolrQuery q = invocation.getArgument(1);
+			assertEquals(List.of(new SolrQuery.SortClause("price", SolrQuery.ORDER.asc),
+					new SolrQuery.SortClause("name", SolrQuery.ORDER.desc)), q.getSorts());
+			return mockResponse;
+		});
+
+		SearchService localService = new SearchService(mockClient);
+		// "DESC" also proves the order value is matched case-insensitively.
+		localService.search("test_collection", null, null, null,
+				List.of(Map.of("item", "price", "order", "asc"), Map.of("item", "name", "order", "DESC")), null, null);
+	}
+
+	/**
+	 * {@code SortClause}'s constructor calls {@code ORDER.valueOf(order)}, which
+	 * throws a bare NPE on a missing order and an opaque IllegalArgumentException
+	 * on an unrecognised one. Callers are LLMs, so each message must name the key
+	 * or value it expects, otherwise the model has nothing to correct on retry.
+	 */
+	@Test
+	void search_WithMalformedSortClause_ShouldExplainWhatToSend() {
+		SearchService localService = new SearchService(mock(SolrClient.class));
+
+		IllegalArgumentException missingItem = assertThrows(IllegalArgumentException.class,
+				() -> localService.search("c", null, null, null, List.of(Map.of("order", "asc")), null, null));
+		assertTrue(missingItem.getMessage().contains("item"), missingItem.getMessage());
+
+		IllegalArgumentException blankItem = assertThrows(IllegalArgumentException.class, () -> localService.search("c",
+				null, null, null, List.of(Map.of("item", "  ", "order", "asc")), null, null));
+		assertTrue(blankItem.getMessage().contains("item"), blankItem.getMessage());
+
+		IllegalArgumentException missingOrder = assertThrows(IllegalArgumentException.class,
+				() -> localService.search("c", null, null, null, List.of(Map.of("item", "price")), null, null));
+		assertTrue(missingOrder.getMessage().contains("order"), missingOrder.getMessage());
+		assertTrue(missingOrder.getMessage().contains("price"), "Should name the offending field");
+
+		IllegalArgumentException badOrder = assertThrows(IllegalArgumentException.class, () -> localService.search("c",
+				null, null, null, List.of(Map.of("item", "price", "order", "ascending")), null, null));
+		assertTrue(badOrder.getMessage().contains("ascending"), badOrder.getMessage());
+		assertTrue(badOrder.getMessage().contains("asc"), "Should state the accepted values");
+	}
+
+	@Test
 	void searchCollectionPrompt_includesKeyWorkflowSteps() {
 		SearchService localService = new SearchService(mock(SolrClient.class));
 		String body = localService.searchCollectionPrompt("shows", "What sci-fi shows are on Netflix?");

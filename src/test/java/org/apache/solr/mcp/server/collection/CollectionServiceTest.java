@@ -405,6 +405,39 @@ class CollectionServiceTest {
 	}
 
 	@Test
+	void validateCollectionExists_WithShardWordInsideCollectionName_ShouldNotMatch() throws Exception {
+		// Given - a single collection whose own name merely contains "_shard".
+		// SolrCloud core names are "<collection>_shard<N>[_replica_<type><M>]", so
+		// "orders_shard_archive" is a collection in its own right, not a core of a
+		// collection called "orders".
+		CollectionService spyService = spy(collectionService);
+		doReturn(List.of("orders_shard_archive")).when(spyService).listCollections();
+
+		Method method = CollectionService.class.getDeclaredMethod("validateCollectionExists", String.class);
+		method.setAccessible(true);
+
+		// Then - "orders" does not exist and must not be validated by a loose prefix
+		// match, which is the inverse of the extractCollectionName truncation bug.
+		assertFalse((boolean) method.invoke(spyService, "orders"),
+				"A collection merely prefixed by the name must not satisfy the shard match");
+		assertTrue((boolean) method.invoke(spyService, "orders_shard_archive"));
+	}
+
+	@Test
+	void validateCollectionExists_WithGenuineCoreName_ShouldMatchItsCollection() throws Exception {
+		// Given - real SolrCloud core names for a collection that itself ends in
+		// "_shard_archive"
+		CollectionService spyService = spy(collectionService);
+		doReturn(List.of("orders_shard_archive_shard2_replica_n1")).when(spyService).listCollections();
+
+		Method method = CollectionService.class.getDeclaredMethod("validateCollectionExists", String.class);
+		method.setAccessible(true);
+
+		assertTrue((boolean) method.invoke(spyService, "orders_shard_archive"));
+		assertFalse((boolean) method.invoke(spyService, "orders"));
+	}
+
+	@Test
 	void validateCollectionExists_WithEmptyList() throws Exception {
 		CollectionService spyService = spy(collectionService);
 		doReturn(Collections.emptyList()).when(spyService).listCollections();

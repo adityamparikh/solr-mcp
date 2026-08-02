@@ -20,10 +20,13 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.apache.solr.client.solrj.SolrClient;
@@ -189,6 +192,66 @@ class SchemaServiceTest {
 		ArgumentCaptor<SolrRequest> captor = ArgumentCaptor.forClass(SolrRequest.class);
 		verify(solrClient).request(captor.capture(), eq("col"));
 		assertInstanceOf(MultiUpdate.class, captor.getValue());
+	}
+
+	/**
+	 * A definition without a usable {@code name} must be rejected by name. Casting
+	 * {@code get("name")} recorded a null name for a definition that omitted it,
+	 * and threw a bare ClassCastException when it was not a string - neither told
+	 * the caller which entry was malformed.
+	 */
+	@Test
+	void addFields_definitionWithoutUsableName_throwsNamingTheProblem() {
+		Map<String, Object> noName = new HashMap<>();
+		noName.put("type", "string");
+
+		IllegalArgumentException missing = assertThrows(IllegalArgumentException.class,
+				() -> schemaService.addFields("col", List.of(noName)));
+		assertTrue(missing.getMessage().contains("field"), missing.getMessage());
+		assertTrue(missing.getMessage().contains("name"), missing.getMessage());
+
+		assertThrows(IllegalArgumentException.class,
+				() -> schemaService.addFields("col", List.of(Map.of("name", 42, "type", "string"))));
+		assertThrows(IllegalArgumentException.class,
+				() -> schemaService.addFields("col", List.of(Map.of("name", "  ", "type", "string"))));
+
+		// The malformed definition must be rejected before anything reaches Solr.
+		verifyNoInteractions(solrClient);
+	}
+
+	@Test
+	void addFieldTypes_definitionWithoutUsableName_throwsNamingTheProblem() {
+		Map<String, Object> noName = new HashMap<>();
+		noName.put("class", "solr.StrField");
+
+		IllegalArgumentException missing = assertThrows(IllegalArgumentException.class,
+				() -> schemaService.addFieldTypes("col", List.of(noName)));
+		assertTrue(missing.getMessage().contains("field type"), missing.getMessage());
+
+		assertThrows(IllegalArgumentException.class,
+				() -> schemaService.addFieldTypes("col", List.of(Map.of("name", 42, "class", "solr.StrField"))));
+
+		verifyNoInteractions(solrClient);
+	}
+
+	/**
+	 * The error branch of {@code getSchemaResource} is serialised through Jackson
+	 * rather than string concatenation. Solr error messages routinely embed quoted
+	 * field names, and a raw {@code "} would emit malformed JSON to the MCP client.
+	 */
+	@Test
+	void getSchemaResource_WhenSolrFails_ReturnsWellFormedJson() throws Exception {
+		ObjectMapper realMapper = new ObjectMapper();
+		SchemaService service = new SchemaService(solrClient, realMapper);
+		String nastyMessage = "undefined field \"title\"\n\tat solr\\core";
+		when(solrClient.request(any(SolrRequest.class), eq("col"))).thenThrow(new SolrServerException(nastyMessage));
+
+		String json = service.getSchemaResource("col");
+
+		JsonNode parsed = realMapper.readTree(json);
+		assertTrue(parsed.has("error"), "Error payload should be a JSON object with an 'error' key");
+		assertTrue(parsed.get("error").asText().contains("undefined field \"title\""),
+				"Quotes and escapes must survive round-tripping: " + json);
 	}
 
 	@Test

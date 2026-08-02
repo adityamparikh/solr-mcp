@@ -18,6 +18,7 @@ package org.apache.solr.mcp.server.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.concurrent.TimeUnit;
 import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.impl.HttpJdkSolrClient;
@@ -93,7 +94,14 @@ import org.springframework.context.annotation.Configuration;
  * <li>{@code http://localhost:8983/solr} → {@code http://localhost:8983/solr/}
  * <li>{@code http://localhost:8983/solr/} → {@code http://localhost:8983/solr/}
  * (unchanged)
+ * <li>{@code http://solr/} → {@code http://solr/solr/} - a host <em>named</em>
+ * "solr" is not a "/solr/" path
  * </ul>
+ *
+ * <p>
+ * Anything that is not an absolute http(s) URL with a host is rejected at
+ * startup rather than normalised; see {@link #parseSolrUrl(String)} for why
+ * silently accepting it is worse.
  *
  * @see SolrConfigurationProperties
  * @see HttpJdkSolrClient
@@ -192,10 +200,11 @@ public class SolrConfig {
 
 	private static SolrClient buildSolrClient(SolrConfigurationProperties properties,
 			JsonResponseParser jsonResponseParser) {
+		URI parsed = parseSolrUrl(properties.url());
+
 		// Normalise against the URL's *path* only. Testing the whole URL string
 		// would see the "/solr/" inside an authority such as http://solr/ and
 		// wrongly conclude the path was already present.
-		URI parsed = URI.create(properties.url());
 		String path = parsed.getPath() == null ? "" : parsed.getPath();
 		if (!path.endsWith("/")) {
 			path = path + "/";
@@ -213,5 +222,40 @@ public class SolrConfig {
 		return new HttpJdkSolrClient.Builder(url).withConnectionTimeout(CONNECTION_TIMEOUT_MS, TimeUnit.MILLISECONDS)
 				.withIdleTimeout(SOCKET_TIMEOUT_MS, TimeUnit.MILLISECONDS).useHttp1_1(true)
 				.withResponseParser(jsonResponseParser).withRequestWriter(new XMLRequestWriter()).build();
+	}
+
+	/**
+	 * Parses the configured Solr URL, rejecting anything that is not an absolute
+	 * HTTP(S) URL.
+	 *
+	 * <p>
+	 * The check is not cosmetic. {@code URI.create("localhost:8983/solr")} succeeds
+	 * but yields an <em>opaque</em> URI - scheme {@code localhost}, null path - and
+	 * {@link URI#resolve(String)} on an opaque URI returns the argument unchanged,
+	 * so normalisation would silently discard the host and port and leave a base
+	 * URL of {@code /solr}. SolrJ builds a client from that without complaint,
+	 * turning a one-character configuration mistake into a confusing failure on the
+	 * first request instead of a clear one at startup.
+	 *
+	 * @param url
+	 *            the configured {@code solr.url} value
+	 * @return the parsed, validated URI
+	 * @throws IllegalArgumentException
+	 *             if the value is not an absolute HTTP(S) URL with a host
+	 */
+	private static URI parseSolrUrl(String url) {
+		URI parsed;
+		try {
+			parsed = new URI(url);
+		} catch (URISyntaxException e) {
+			throw new IllegalArgumentException("solr.url is not a valid URL: " + url, e);
+		}
+		String scheme = parsed.getScheme();
+		boolean http = "http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme);
+		if (!http || parsed.isOpaque() || parsed.getHost() == null) {
+			throw new IllegalArgumentException(
+					"solr.url must be an absolute http(s) URL, for example http://localhost:8983/solr/; got: " + url);
+		}
+		return parsed;
 	}
 }

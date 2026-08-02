@@ -23,6 +23,7 @@ import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.impl.HttpJdkSolrClient;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.json.JsonTest;
 
@@ -37,7 +38,14 @@ class SolrConfigUrlNormalizationTest {
 			"http://localhost:8983/, http://localhost:8983/solr",
 			"http://localhost:8983/solr, http://localhost:8983/solr",
 			"http://localhost:8983/solr/, http://localhost:8983/solr",
-			"http://localhost:8983/custom/solr/, http://localhost:8983/custom/solr"})
+			"http://localhost:8983/custom/solr/, http://localhost:8983/custom/solr",
+			// A host *named* "solr": the URL string contains "/solr/" inside the
+			// authority, so matching the whole string would wrongly conclude the
+			// path was already present and skip normalisation.
+			"http://solr/, http://solr/solr", "http://solr:8983/, http://solr:8983/solr",
+			"http://solr:8983, http://solr:8983/solr",
+			// "mysolr" must not be mistaken for the "solr" path segment.
+			"http://localhost:8983/mysolr/, http://localhost:8983/mysolr/solr"})
 	void testUrlNormalization(String inputUrl, String expectedUrl) throws Exception {
 		SolrConfigurationProperties testProperties = new SolrConfigurationProperties(inputUrl);
 		SolrConfig solrConfig = new SolrConfig();
@@ -48,5 +56,32 @@ class SolrConfigUrlNormalizationTest {
 			var httpClient = assertInstanceOf(HttpJdkSolrClient.class, client);
 			assertEquals(expectedUrl, httpClient.getBaseURL());
 		}
+	}
+
+	/**
+	 * A URL that is not an absolute HTTP(S) URL must fail loudly at startup.
+	 *
+	 * <p>
+	 * {@code URI.create("localhost:8983/solr")} yields an <em>opaque</em> URI whose
+	 * scheme is {@code localhost} and whose path is {@code null}; resolving against
+	 * it silently discards the host and port, leaving a base URL of {@code /solr}.
+	 * SolrJ accepts that without complaint, so the mistake would only surface later
+	 * as a confusing request failure.
+	 */
+	@ParameterizedTest
+	@ValueSource(
+			strings = {"localhost:8983/solr", "localhost:8983", "/solr", "solr", "ftp://localhost:8983/solr",
+					"http://local host:8983/solr"})
+	void testRejectsUrlThatIsNotAnAbsoluteHttpUrl(String inputUrl) {
+		SolrConfigurationProperties testProperties = new SolrConfigurationProperties(inputUrl);
+		SolrConfig solrConfig = new SolrConfig();
+
+		IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+				() -> solrConfig.solrClient(testProperties, new JsonResponseParser(objectMapper)));
+
+		assertTrue(thrown.getMessage().contains("solr.url"),
+				() -> "Message should name the offending property, was: " + thrown.getMessage());
+		assertTrue(thrown.getMessage().contains(inputUrl),
+				() -> "Message should echo the rejected value, was: " + thrown.getMessage());
 	}
 }

@@ -17,11 +17,15 @@
 package org.apache.solr.mcp.server.indexing;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import org.apache.solr.common.SolrInputDocument;
+import org.apache.solr.mcp.server.indexing.documentcreator.DocumentProcessingException;
 import org.apache.solr.mcp.server.indexing.documentcreator.IndexingDocumentCreator;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.TestPropertySource;
@@ -146,5 +150,14 @@ class CsvIndexingTest {
 		assertThat(secondDoc.getFieldValue("id")).isEqualTo("2");
 		assertThat(secondDoc.getFieldValue("name")).isEqualTo("Regular Name");
 		assertThat(secondDoc.getFieldValue("description")).isEqualTo("Regular description");
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = {"", "   ", "\n\t "})
+	void testCreateSchemalessDocumentsFromCsvWithBlankInput(String blank) {
+		// Blank input has no header row, so it can only ever yield zero documents.
+		// Rejecting it distinguishes "you sent nothing" from "nothing matched".
+		assertThatThrownBy(() -> indexingDocumentCreator.createSchemalessDocumentsFromCsv(blank))
+				.isInstanceOf(DocumentProcessingException.class).hasMessageContaining("CSV input cannot be empty");
 	}
 }

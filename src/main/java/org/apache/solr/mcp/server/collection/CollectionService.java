@@ -975,10 +975,12 @@ public class CollectionService {
 			return true;
 		}
 
-		// Check if any of the returned collections start with the collection name (for
-		// shard
-		// names)
-		return collections.stream().anyMatch(c -> c.startsWith(collection + SHARD_SUFFIX));
+		// Otherwise the listing may contain SolrCloud core names. Resolve each back
+		// to its collection with the same anchored grammar extractCollectionName
+		// uses; a loose "startsWith(collection + _shard)" would validate the
+		// non-existent "orders" against a real collection named
+		// "orders_shard_archive".
+		return collections.stream().anyMatch(c -> extractCollectionName(c).equals(collection));
 	}
 
 	/**

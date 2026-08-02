@@ -123,12 +123,21 @@ public class JsonDocumentCreator implements SolrDocumentCreator {
 			JsonNode rootNode = this.objectMapper.readTree(json);
 
 			if (rootNode.isArray()) {
+				int index = 0;
 				for (JsonNode item : rootNode) {
+					if (!item.isObject()) {
+						// Flattening a non-object yields a document with no fields,
+						// so accepting these indexed one empty document per element
+						// and still reported success.
+						throw new DocumentProcessingException("JSON array must contain only objects; found "
+								+ item.getNodeType() + " at index " + index);
+					}
 					SolrInputDocument doc = new SolrInputDocument();
 
 					// Add all fields without type suffixes - let Solr figure it out
 					addAllFieldsFlat(doc, item, "");
 					documents.add(doc);
+					index++;
 				}
 			} else if (rootNode.isObject()) {
 				// A single document. Previously fell through and returned an empty
