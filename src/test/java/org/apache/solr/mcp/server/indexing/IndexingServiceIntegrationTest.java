@@ -160,6 +160,50 @@ class IndexingServiceIntegrationTest {
 	}
 
 	@Test
+	void indexJsonDocuments_reportsSanitizedFieldNames() throws Exception {
+		String json = """
+				[
+				  {
+				    "id": "sanitize001",
+				    "User-Name": "Jane Doe",
+				    "product.price": 9.99
+				  }
+				]
+				""";
+
+		String result = indexingService.indexJsonDocuments(COLLECTION_NAME, json);
+
+		// The response must list the names as indexed, not as submitted, so MCP
+		// clients query the fields that actually exist.
+		assertTrue(result.contains("user_name"));
+		assertTrue(result.contains("product_price"));
+		assertFalse(result.contains("User-Name"));
+	}
+
+	@Test
+	void indexMarkdownDocuments_reportsSanitizedFieldNames() throws Exception {
+		String markdown = """
+				---
+				id: sanitize-md-001
+				Author-Name: Jane Doe
+				review.score: 4.5
+				---
+
+				# Title
+
+				Body text.
+				""";
+
+		String result = indexingService.indexMarkdownDocuments(COLLECTION_NAME, markdown);
+
+		// Front matter keys are author-supplied and arbitrary, so markdown is the
+		// format most likely to have field names rewritten on the way in.
+		assertTrue(result.contains("author_name"));
+		assertTrue(result.contains("review_score"));
+		assertFalse(result.contains("Author-Name"));
+	}
+
+	@Test
 	void testIndexJsonDocuments() throws Exception {
 
 		// Test JSON string with multiple documents
