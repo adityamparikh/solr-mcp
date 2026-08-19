@@ -8,27 +8,40 @@ To release Solr MCP, these are the steps:
 
 1) Set up a release in Apache Trusted Release server at https://release-test.apache.org/#project-solr-mcp.
 
-1) create the artifacts via `./gradlew clean build`
+1) create the binary artifact via `./gradlew clean build`
+
+1) create the source artifact.  The source release is the artifact the PMC actually votes on, and the build does not produce one, so make it explicitly from the exact commit being voted on:
+```
+export V=1.0.0
+git archive --format=tar.gz --prefix=solr-mcp-$V/ HEAD -o build/libs/solr-mcp-$V-src.tgz
+```
 
 1) `./gradlew build` already ran the Apache RAT license-header check (`org.apache.solr.mcp.rat`) and regenerated the binary `LICENSE`/`NOTICE` as part of `check` — confirm the build was green, then spot-check the generated files bundled in the bootJar:
 ```
-unzip -p build/libs/solr-mcp-X.Y.Z.jar META-INF/LICENSE
-unzip -p build/libs/solr-mcp-X.Y.Z.jar META-INF/NOTICE
+unzip -p build/libs/solr-mcp-$V.jar META-INF/LICENSE
+unzip -p build/libs/solr-mcp-$V.jar META-INF/NOTICE
 ```
 
-1) Sign them via:
+1) Collect just the two artifacts being released.  `build/libs` also holds `-plain`, `-sources` and `-javadoc` jars, which are not part of the release, so do not glob the whole directory:
 ```
-for fn in *.jar
+cd build/libs
+mkdir -p ../release && cp solr-mcp-$V.jar solr-mcp-$V-src.tgz ../release/
+cd ../release
+```
+
+1) Sign them via (`gpgsign.sh` comes from the ASF release tooling, not this repo):
+```
+for fn in *
 do
-  ../../gpgsign.sh sign ~/.ssh/.private.asc "$fn"
+  gpgsign.sh sign ~/.ssh/.private.asc "$fn"
 done
 ```
 
-1) Make sha keys via (macOS; use `sha512sum` instead of `sha512` on Linux):
+1) Make sha keys via:
 ```
-for fn in *.jar
+for fn in *.jar *.tgz
 do
-  sha512 $fn > $fn.sha512
+  shasum -a 512 $fn > $fn.sha512
 done
 ```
 
