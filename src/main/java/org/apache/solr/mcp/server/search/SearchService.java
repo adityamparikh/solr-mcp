@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrServerException;
@@ -29,8 +30,10 @@ import org.apache.solr.client.solrj.response.FacetField;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.SolrDocumentList;
+import org.apache.solr.common.SolrException;
 import org.apache.solr.common.params.FacetParams;
 import org.apache.solr.mcp.server.util.PromptNames;
+import org.jspecify.annotations.Nullable;
 import org.springaicommunity.mcp.annotation.McpArg;
 import org.springaicommunity.mcp.annotation.McpPrompt;
 import org.springaicommunity.mcp.annotation.McpTool;
@@ -112,6 +115,38 @@ public class SearchService {
 	 * map.
 	 */
 	public static final String SORT_ORDER = "order";
+
+	/**
+	 * Fragments of Solr's own error text that identify a failure we can advise on.
+	 *
+	 * <p>
+	 * These are matched rather than imported because they are produced by
+	 * <em>solr-core</em>, which is not on this server's classpath — only
+	 * {@code solr-solrj} is. Nothing couples them to Solr at compile time, so
+	 * {@code SearchServiceIntegrationTest} pins each one against a real Solr
+	 * server: if a future Solr rewords a message, that test fails rather than the
+	 * hint silently disappearing. Prefer a structured signal (see
+	 * {@link SolrException#code()} below) whenever one exists.
+	 */
+	static final String UNDEFINED_FIELD_TOKEN = "undefined field";
+	/** @see #UNDEFINED_FIELD_TOKEN */
+	static final String SORT_FIELD_NOT_FOUND_TOKEN = "field can't be found";
+	/** @see #UNDEFINED_FIELD_TOKEN */
+	static final String SYNTAX_ERROR_TOKEN = "syntaxerror";
+	/** @see #UNDEFINED_FIELD_TOKEN */
+	static final String CANNOT_PARSE_TOKEN = "cannot parse";
+
+	/**
+	 * Remediation hint naming the {@code get-schema} tool; takes the collection.
+	 */
+	static final String GET_SCHEMA_HINT_FORMAT = ". Hint: call get-schema on collection '%s' to see the fields that"
+			+ " exist; schemaless collections often store values under dynamic-suffix names such as name_s or price_d.";
+	/** Remediation hint for an unparseable {@code q}. */
+	static final String LUCENE_SYNTAX_HINT = ". Hint: the q parameter uses Lucene query syntax; quote or escape"
+			+ " special characters and check any {!...} local params.";
+	/** Remediation hint naming the {@code list-collections} tool. */
+	static final String LIST_COLLECTIONS_HINT = ". Hint: call list-collections to see available collections.";
+
 	private final SolrClient solrClient;
 
 	/**
@@ -229,6 +264,10 @@ public class SearchService {
 			annotations = @McpTool.McpAnnotations(readOnlyHint = true),
 			description = """
 			Search specified Solr collection with query, optional filters, facets, sorting, and pagination.
+			The q parameter accepts Lucene query syntax. There are no separate defType/qf/mm parameters:
+			to use eDisMax features (multi-field search, minimum-match, boosts), embed Solr local params
+			in q, e.g. {!edismax qf='name author' mm=2}george martin.
+			Put filters in fq (filterQueries) instead of q so Solr can cache and reuse them.
 			Note that solr has dynamic fields where name of field in schema may end with suffixes
 			_s: Represents a string field, used for exact string matching.
 			_i: Represents an integer field.
@@ -256,13 +295,18 @@ public class SearchService {
 	// @formatter:on
 	public SearchResponse search(@McpToolParam(description = "Solr collection to query") String collection,
 			@McpToolParam(
-					description = "Solr q parameter. If none specified defaults to \"*:*\"",
-					required = false) String query,
-			@McpToolParam(description = "Solr fq parameter", required = false) List<String> filterQueries,
-			@McpToolParam(description = "Solr facet fields", required = false) List<String> facetFields,
-			@McpToolParam(description = "Solr sort parameter", required = false) List<Map<String, String>> sortClauses,
-			@McpToolParam(description = "Starting offset for pagination", required = false) Integer start,
-			@McpToolParam(description = "Number of rows to return", required = false) Integer rows)
+					description = "Solr q parameter. Lucene syntax; supports local params such as"
+							+ " {!edismax qf='name author'}. If none specified defaults to \"*:*\"",
+					required = false) @Nullable String query,
+			@McpToolParam(
+					description = "Solr fq parameter: list of filter queries, one filter per entry",
+					required = false) @Nullable List<String> filterQueries,
+			@McpToolParam(description = "Solr facet fields", required = false) @Nullable List<String> facetFields,
+			@McpToolParam(
+					description = "Solr sort parameter",
+					required = false) @Nullable List<Map<String, String>> sortClauses,
+			@McpToolParam(description = "Starting offset for pagination", required = false) @Nullable Integer start,
+			@McpToolParam(description = "Number of rows to return", required = false) @Nullable Integer rows)
 			throws SolrServerException, IOException {
 
 		// query
@@ -286,9 +330,7 @@ public class SearchService {
 
 		// sorting
 		if (!CollectionUtils.isEmpty(sortClauses)) {
-			solrQuery.setSorts(sortClauses.stream()
-					.map(sortClause -> new SolrQuery.SortClause(sortClause.get(SORT_ITEM), sortClause.get(SORT_ORDER)))
-					.toList());
+			solrQuery.setSorts(sortClauses.stream().map(SearchService::toSortClause).toList());
 		}
 
 		// pagination
@@ -300,7 +342,12 @@ public class SearchService {
 			solrQuery.setRows(rows);
 		}
 
-		final QueryResponse queryResponse = solrClient.query(collection, solrQuery);
+		final QueryResponse queryResponse;
+		try {
+			queryResponse = solrClient.query(collection, solrQuery);
+		} catch (SolrException e) {
+			throw withRemediationHint(e, collection);
+		}
 
 		// Add documents
 		final SolrDocumentList documents = queryResponse.getResults();
@@ -312,6 +359,70 @@ public class SearchService {
 		final var facets = getFacets(queryResponse);
 
 		return new SearchResponse(documents.getNumFound(), documents.getStart(), documents.getMaxScore(), docs, facets);
+	}
+
+	/**
+	 * Builds a {@link SolrQuery.SortClause} from one caller-supplied map.
+	 *
+	 * <p>
+	 * Both keys are validated up front: {@code SortClause}'s constructor calls
+	 * {@code ORDER.valueOf(order)}, which throws {@link NullPointerException} on a
+	 * missing order and an opaque {@link IllegalArgumentException} on an
+	 * unrecognised one. Callers are LLMs, so the message needs to say what to send.
+	 */
+	private static SolrQuery.SortClause toSortClause(Map<String, String> sortClause) {
+		String field = sortClause.get(SORT_ITEM);
+		String order = sortClause.get(SORT_ORDER);
+		if (field == null || field.isBlank()) {
+			throw new IllegalArgumentException("Each sort clause requires a non-empty '" + SORT_ITEM + "' key");
+		}
+		if (order == null || order.isBlank()) {
+			throw new IllegalArgumentException(
+					"Sort clause for '" + field + "' requires a '" + SORT_ORDER + "' key of 'asc' or 'desc'");
+		}
+		SolrQuery.ORDER parsed;
+		try {
+			parsed = SolrQuery.ORDER.valueOf(order.toLowerCase(Locale.ROOT));
+		} catch (IllegalArgumentException e) {
+			throw new IllegalArgumentException(
+					"Unsupported sort order '" + order + "' for '" + field + "'; expected 'asc' or 'desc'", e);
+		}
+		return new SolrQuery.SortClause(field, parsed);
+	}
+
+	/**
+	 * Wraps common Solr query failures with a next-step hint. MCP clients receive
+	 * the exception message as the tool error, so naming the follow-up tool lets
+	 * them self-correct instead of retrying blind.
+	 *
+	 * @param e
+	 *            the Solr exception raised by the query
+	 * @param collection
+	 *            the collection that was queried
+	 * @return an exception carrying the original message plus a remediation hint,
+	 *         or the original exception when no hint applies
+	 */
+	private static RuntimeException withRemediationHint(SolrException e, String collection) {
+		final String message = String.valueOf(e.getMessage());
+
+		// An unknown collection is a 404 whose body is Solr's HTML "not found" page,
+		// so SolrJ reports it as a mime-type mismatch and leaves getMetadata() null.
+		// The status code is the only signal that survives; match it rather than the
+		// message text, which mentions neither the collection nor "404".
+		if (e.code() == SolrException.ErrorCode.NOT_FOUND.code) {
+			return new IllegalArgumentException(message + LIST_COLLECTIONS_HINT, e);
+		}
+
+		// Everything below is a 400 carrying a generic SolrException, indistinguishable
+		// except by Solr's message text.
+		final String lower = message.toLowerCase(Locale.ROOT);
+		if (lower.contains(UNDEFINED_FIELD_TOKEN) || lower.contains(SORT_FIELD_NOT_FOUND_TOKEN)) {
+			return new IllegalArgumentException(message + GET_SCHEMA_HINT_FORMAT.formatted(collection), e);
+		}
+		if (lower.contains(SYNTAX_ERROR_TOKEN) || lower.contains(CANNOT_PARSE_TOKEN)) {
+			return new IllegalArgumentException(message + LUCENE_SYNTAX_HINT, e);
+		}
+		return e;
 	}
 
 	/**
@@ -369,7 +480,7 @@ public class SearchService {
 
 				3. Run the search.
 				   - Call `search` with `collection=%s` and the chosen `query` plus optional
-				     `filterQueries`, `facetFields`, `sortFields`, `start`, `rows`. Set `rows=10` for a
+				     `filterQueries`, `facetFields`, `sortClauses`, `start`, `rows`. Set `rows=10` for a
 				     focused look or `rows=0` if you only need counts / facets.
 
 				4. Interpret and refine.
