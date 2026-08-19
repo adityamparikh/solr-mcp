@@ -158,6 +158,27 @@ class IndexingServiceIntegrationTest {
 	}
 
 	@Test
+	void indexJsonDocuments_reportsSanitizedFieldNames() throws Exception {
+		String json = """
+				[
+				  {
+				    "id": "sanitize001",
+				    "User-Name": "Jane Doe",
+				    "product.price": 9.99
+				  }
+				]
+				""";
+
+		String result = indexingService.indexJsonDocuments(COLLECTION_NAME, json);
+
+		// The response must list the names as indexed, not as submitted, so MCP
+		// clients query the fields that actually exist.
+		assertTrue(result.contains("user_name"));
+		assertTrue(result.contains("product_price"));
+		assertFalse(result.contains("User-Name"));
+	}
+
+	@Test
 	void testIndexJsonDocuments() throws Exception {
 
 		// Test JSON string with multiple documents
@@ -676,9 +697,12 @@ class IndexingServiceIntegrationTest {
 		// Create documents
 		List<SolrInputDocument> documents = indexingDocumentCreator.createSchemalessDocumentsFromJson(json);
 
-		// Verify no documents were created since input is not an array
+		// A bare object is indexed as a single document. This previously returned
+		// an empty list, so indexing one object silently indexed nothing and still
+		// reported success.
 		assertNotNull(documents);
-		assertEquals(0, documents.size());
+		assertEquals(1, documents.size());
+		assertEquals("single_object_001", documents.getFirst().getFieldValue("id"));
 	}
 
 	@Test
