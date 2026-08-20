@@ -25,7 +25,7 @@ Solr MCP Server is a Spring AI Model Context Protocol (MCP) server that enables 
 ./gradlew test jacocoTestReport              # Tests with coverage report
 
 # SBOM (Software Bill of Materials)
-./gradlew cyclonedxBom                       # Generate build/reports/application.cdx.json
+./gradlew cyclonedxBom                       # Generate build/reports/cyclonedx/application.cdx.json
 
 # Code formatting (REQUIRED before commit)
 ./gradlew spotlessApply            # Apply formatting
@@ -120,25 +120,35 @@ Configuration files: `application-stdio.properties`, `application-http.propertie
 
 ### SBOM Architecture
 
-CycloneDX SBOM generation is wired by applying the `org.cyclonedx.bom` plugin.
-It stays pinned to **2.4.1** even on Spring Boot 4.1.1 (Spring Initializr ships
-3.x for SB4) because cyclonedx 3.x fails at *configuration* time on Gradle 9.4.1
-— a variant-mutation conflict on `:cyclonedxDirectBom`. Spring Boot's
-`CycloneDxPluginAction` only auto-configures the plugin version it recognizes
-(3.x), so with 2.4.1 unrecognized it leaves `cyclonedxBom` at plugin defaults:
-it would write `build/reports/bom.json` and scan the wrong configuration set
-(stale Jackson 2, no Spring Boot 4 modular jars). `build.gradle.kts` therefore
-configures the task explicitly — `outputName = "application.cdx"` and
-`includeConfigs = [productionRuntimeClasspath]` — so the SBOM lands at
-`build/reports/application.cdx.json` and describes exactly the shipped fat-jar
-classpath (matching `generateBinaryLicense`'s completeness gate). The bootJar
-embeds the result at `META-INF/sbom/application.cdx.json`; the actuator serves
+CycloneDX SBOM generation is wired by applying the `org.cyclonedx.bom` plugin
+(**3.4.1**). Spring Boot 4's `CycloneDxPluginAction` recognizes 3.x and auto-configures
+the output as `application.cdx.json`, written to `build/reports/cyclonedx/` — note the
+extra directory level compared with 2.x, which wrote straight to `build/reports/`. The
+license-notice plugin reads it from that path.
+
+What Spring Boot does *not* set is scope. Left alone, the SBOM describes cyclonedx's
+default configuration set, which includes test-only dependencies — the shipped fat jar
+contains zero testcontainers artifacts, but an unscoped SBOM lists six. Since the SBOM is
+embedded at `META-INF/sbom/application.cdx.json` and served from
+`/actuator/sbom/application`, that would publish a bill of materials for artifacts the
+binary does not contain. `build.gradle.kts` therefore scopes it to
+`productionRuntimeClasspath`, matching what `generateBinaryLicense`'s completeness gate
+treats as shipped.
+
+Scoping lives on the **direct** task in 3.x: `cyclonedxBom` (`CyclonedxAggregateTask`)
+exposes only output settings, while `cyclonedxDirectBom` (`CyclonedxDirectTask`) carries
+`includeConfigs` / `skipConfigs` / `testConfigs`.
+
+The bootJar embeds the result at `META-INF/sbom/application.cdx.json`; the actuator serves
 it at `/actuator/sbom/application` in the `http` profile (enabled via
-`application-http.properties`). Both the Jib JVM image and the Paketo native
-images package the bootJar contents, so every distribution artifact ships the
-SBOM without per-image wiring. Dropping the pin and the manual task configuration
-once cyclonedx 3.x configures cleanly is tracked in
-[#186](https://github.com/apache/solr-mcp/issues/186).
+`application-http.properties`). Both the Jib JVM image and the Paketo native images package
+the bootJar contents, so every distribution artifact ships the SBOM without per-image
+wiring.
+
+*History:* the plugin was pinned to 2.4.1 while cyclonedx 3.x failed at configuration time
+on Gradle 9.4.1 (a variant-mutation conflict on `:cyclonedxDirectBom`). That is fixed as of
+3.4.1; the pin and its manual `outputName` workaround were removed in #186, verified by the
+migrated build producing a byte-identical component set and LICENSE to the pinned one.
 
 ### Logging Architecture
 
