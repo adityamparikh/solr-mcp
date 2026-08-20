@@ -93,7 +93,8 @@ val generateBinaryLicense =
         group = "documentation"
         dependsOn("cyclonedxBom")
         baseLicense.set(licenseFile)
-        sbom.set(layout.buildDirectory.file("reports/application.cdx.json"))
+        // cyclonedx 3.x writes under reports/cyclonedx/; 2.x wrote straight to reports/.
+        sbom.set(layout.buildDirectory.file("reports/cyclonedx/application.cdx.json"))
         bundledCoordinates.set(shippedCoordinates)
         outputFile.set(layout.buildDirectory.file("generated/license/LICENSE"))
     }
