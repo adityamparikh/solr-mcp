@@ -1,0 +1,172 @@
+<title>Solr MCP — Community over Code 2026</title>
+
+<style>
+:root {
+  --ground:#F1F3F0; --surface:#FFFFFF; --ink:#15171A; --ink-2:#585C63; --ink-3:#83888F;
+  --rule:#D3D8D1; --accent:#9E2A4E; --sage:#4F6650; --code-bg:#14161A; --code-ink:#DFE3DC;
+  --f-display:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+  --f-body:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --f-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root{--ground:#131417;--surface:#1A1C20;--ink:#E9EBE6;--ink-2:#A0A5AC;--ink-3:#7C828A;
+  --rule:#2A2D32;--accent:#E4778F;--sage:#93AC93;--code-bg:#0D0E11;}
+}
+:root[data-theme="dark"]{--ground:#131417;--surface:#1A1C20;--ink:#E9EBE6;--ink-2:#A0A5AC;
+  --ink-3:#7C828A;--rule:#2A2D32;--accent:#E4778F;--sage:#93AC93;--code-bg:#0D0E11;}
+:root[data-theme="light"]{--ground:#F1F3F0;--surface:#FFFFFF;--ink:#15171A;--ink-2:#585C63;
+  --ink-3:#83888F;--rule:#D3D8D1;--accent:#9E2A4E;--sage:#4F6650;--code-bg:#14161A;}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--f-body);}
+.deck{max-width:60rem;margin:0 auto;padding:1.5rem 1.25rem 5rem;}
+.slide{
+  background:var(--surface);border:1px solid var(--rule);border-radius:4px;
+  padding:2.5rem 2.25rem;margin-bottom:1.25rem;min-height:19rem;
+  display:flex;flex-direction:column;justify-content:center;
+  page-break-after:always;
+}
+.num{font-size:.68rem;letter-spacing:.2em;text-transform:uppercase;color:var(--ink-3);
+  font-weight:700;margin:0 0 1rem;font-variant-numeric:tabular-nums;}
+h1{font-family:var(--f-display);font-weight:400;font-size:clamp(1.9rem,4.5vw,3rem);
+  line-height:1.08;margin:0 0 1rem;text-wrap:balance;}
+h1 em{font-style:normal;color:var(--accent)}
+h2{font-family:var(--f-display);font-weight:400;font-size:clamp(1.5rem,3.2vw,2.1rem);
+  line-height:1.15;margin:0 0 1rem;text-wrap:balance;}
+p{margin:0 0 .9rem;max-width:46rem;line-height:1.6;color:var(--ink-2);font-size:1.02rem}
+p.lead{color:var(--ink);font-size:1.12rem}
+ul{margin:.2rem 0 .9rem;padding-left:1.15rem;color:var(--ink-2);line-height:1.7;max-width:46rem}
+li{margin-bottom:.3rem}
+li b{color:var(--ink)}
+code{font-family:var(--f-mono);font-size:.86em;background:var(--ground);
+  padding:.1em .35em;border-radius:2px;border:1px solid var(--rule)}
+pre{background:var(--code-bg);color:var(--code-ink);padding:1rem 1.1rem;border-radius:3px;
+  overflow-x:auto;font-family:var(--f-mono);font-size:.82rem;line-height:1.65;margin:0 0 .9rem}
+pre code{background:none;border:none;padding:0;color:inherit;font-size:inherit}
+.tok-c{color:#7E8B93}
+table{border-collapse:collapse;width:100%;font-size:.92rem;margin:.3rem 0 .9rem}
+th,td{text-align:left;padding:.5rem .7rem;border-bottom:1px solid var(--rule);vertical-align:top}
+th{font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:700}
+tbody tr:last-child td{border-bottom:none}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem}
+.qr-slide{align-items:center;text-align:center}
+.qr-slide img{width:230px;height:230px;background:#fff;padding:10px;border-radius:3px;margin:.4rem 0 1rem}
+.q{font-family:var(--f-display);font-size:1.18rem;color:var(--ink);margin:.15rem 0}
+.tag{display:inline-block;font-size:.64rem;letter-spacing:.13em;text-transform:uppercase;
+  font-weight:700;color:var(--accent);margin-bottom:.5rem}
+.foot{font-size:.78rem;color:var(--ink-3);margin-top:1rem}
+@media print{
+  body{background:#fff}
+  .deck{max-width:none;padding:0}
+  .slide{border:none;box-shadow:none;margin:0;min-height:100vh}
+}
+@media (max-width:640px){ .two{grid-template-columns:1fr} }
+</style>
+
+<div class="deck">
+
+<section class="slide qr-slide">
+  <p class="num">Community over Code 2026 · Glasgow</p>
+  <h1>Talk to <em>Apache Solr</em><br>in plain English</h1>
+  <p class="lead">Eleven Solr tools, handed to your AI assistant over MCP.</p>
+  <img src="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiPz4KPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI5MDAiIGhlaWdodD0iOTAwIiBjbGFzcz0ic2Vnbm8iPjxnIHRyYW5zZm9ybT0ic2NhbGUoMjApIj48cGF0aCBmaWxsPSIjZmZmIiBkPSJNMCAwaDQ1djQ1aC00NXoiLz48cGF0aCBjbGFzcz0icXJsaW5lIiBzdHJva2U9IiMxNTE3MWEiIGQ9Ik00IDQuNWg3bTMgMGgybTEgMGgxbTEgMGgxbTMgMGgybTIgMGgxbTIgMGgxbTMgMGg3bS0zNyAxaDFtNSAwaDFtMSAwaDJtMiAwaDFtMiAwaDFtMiAwaDFtMiAwaDFtMSAwaDFtMSAwaDJtMyAwaDFtNSAwaDFtLTM3IDFoMW0xIDBoM20xIDBoMW0xIDBoMW0yIDBoNW0yIDBoMW0xIDBoMW0xIDBoMW0xIDBoM20xIDBoMW0xIDBoMW0xIDBoM20xIDBoMW0tMzcgMWgxbTEgMGgzbTEgMGgxbTEgMGgxbTIgMGg3bTEgMGgzbTEgMGg0bTMgMGgxbTEgMGgzbTEgMGgxbS0zNyAxaDFtMSAwaDNtMSAwaDFtMSAwaDJtMSAwaDFtMSAwaDNtMSAwaDFtMSAwaDJtMiAwaDJtMSAwaDFtMSAwaDFtMSAwaDFtMSAwaDNtMSAwaDFtLTM3IDFoMW01IDBoMW0xIDBoM20xIDBoM20xIDBoMm0yIDBoMW0xIDBoMW0xIDBoM20xIDBoMW0xIDBoMW01IDBoMW0tMzcgMWg3bTEgMGgxbTEgMGgxbTEgMGgxbTEgMGgxbTEgMGgxbTEgMGgxbTEgMGgxbTEgMGgxbTEgMGgxbTEgMGgxbTEgMGgxbTEgMGg3bS0yOCAxaDJtMiAwaDFtMiAwaDltMSAwaDNtLTI3IDFoMW0yIDBoNG0xIDBoMW0zIDBoMW00IDBoM20xIDBoMW0xIDBoMm0xIDBoMm0xIDBoNW0tMzYgMWg1bTIgMGgxbTEgMGgybTEgMGgybTEgMGgxbTYgMGg0bTEgMGgxbTIgMGgybTEgMGgybTEgMGgxbS0zNyAxaDFtNSAwaDZtMSAwaDRtMSAwaDFtMSAwaDVtMiAwaDRtMSAwaDFtMyAwaDFtLTM3IDFoMW0zIDBoMm0xIDBoMm0xIDBoMW00IDBoMm0yIDBoMm0zIDBoMW0xIDBoMW00IDBoM20yIDBoMW0tMzcgMWgxbTIgMGgxbTIgMGgxbTMgMGgzbTEgMGg0bTYgMGgxbTIgMGgybTEgMGgybTEgMGgxbS0zNCAxaDFtMiAwaDFtNiAwaDFtMSAwaDRtMSAwaDFtMSAwaDFtMSAwaDFtMSAwaDNtMSAwaDFtMSAwaDNtMiAwaDNtLTM3IDFoMW0xIDBoMm0xIDBoMm00IDBoMm0yIDBoMW0xIDBoMm02IDBoNG0yIDBoNG0xIDBoMW0tMzYgMWgxbTEgMGgxbTMgMGgybTIgMGgybTIgMGgybTEgMGg1bTMgMGgybTEgMGgxbTEgMGgxbTEgMGgxbTEgMGgxbS0zNCAxaDJtMiAwaDNtNSAwaDNtMSAwaDFtMSAwaDFtMiAwaDFtMyAwaDFtMiAwaDJtMyAwaDFtLTM2IDFoMW0yIDBoMm0yIDBoMm0xIDBoMW0xIDBoMW0xIDBoM20xIDBoM20yIDBoM20xIDBoNW0xIDBoMW0yIDBoMW0tMzcgMWgzbTIgMGgzbTIgMGgxbTQgMGgxbTUgMGgxbTIgMGg0bTEgMGgxbTIgMGgzbTEgMGgxbS0zNCAxaDNtMiAwaDFtMiAwaDNtNSAwaDFtMSAwaDFtMSAwaDFtMiAwaDFtNiAwaDFtMSAwaDFtLTM1IDFoMW0xIDBoMm0xIDBoMW0xIDBoM20yIDBoMm0xIDBoMW0yIDBoMW0zIDBoMW0zIDBoMm0xIDBoMW00IDBoMW0tMzYgMWgybTEgMGgxbTEgMGgxbTEgMGgybTIgMGgxbTEgMGgxbTIgMGgxbTEgMGgzbTEgMGgybTMgMGgxbTEgMGgzbTEgMGgxbTIgMGgxbS0zNSAxaDJtMSAwaDJtMSAwaDJtMiAwaDFtMyAwaDJtMSAwaDFtNCAwaDVtMiAwaDJtMyAwaDFtLTM3IDFoMW0yIDBoMm0yIDBoNG0xIDBoMW0xIDBoMm0yIDBoMW0zIDBoM20yIDBoMW0xIDBoMW0xIDBoMW0xIDBoMW0xIDBoMm0tMzcgMWgybTEgMGgxbTEgMGg3bTIgMGgxbTEgMGgzbTYgMGgybTMgMGgybTEgMGgxbTEgMGgybS0zNiAxaDFtMiAwaDFtMiAwaDJtMSAwaDVtMSAwaDFtMiAwaDRtNCAwaDJtMSAwaDFtMiAwaDJtMSAwaDFtLTM3IDFoM20yIDBoM20xIDBoMm0yIDBoMm0xIDBoMW0xIDBoMW0yIDBoM20xIDBoM20xIDBoM20xIDBoNG0tMzUgMWgxbTEgMGgybTEgMGgxbTEgMGgxbTggMGgxbTEgMGgxbTEgMGgxbTMgMGgybTEgMGgybTIgMGgxbS0zNCAxaDJtNCAwaDFtMiAwaDFtMiAwaDFtMSAwaDFtMSAwaDFtMiAwaDNtMSAwaDFtMyAwaDZtMiAwaDFtLTI4IDFoMW0xIDBoMm0xIDBoMm01IDBoMm0xIDBoM20yIDBoMW0zIDBoMm0yIDBoMW0tMzcgMWg3bTEgMGgzbTEgMGgxbTEgMGg1bTIgMGgxbTEgMGgxbTIgMGgxbTEgMGgxbTEgMGgxbTEgMGgzbTEgMGgxbS0zNyAxaDFtNSAwaDFtMSAwaDZtMSAwaDJtMiAwaDFtMSAwaDRtMSAwaDNtMyAwaDJtLTM0IDFoMW0xIDBoM20xIDBoMW0yIDBoM20zIDBoMW00IDBoMW0xIDBoMW0xIDBoMW0yIDBoNm0zIDBoMW0tMzcgMWgxbTEgMGgzbTEgMGgxbTQgMGgxbTIgMGgybTEgMGg2bTEgMGgybTEgMGgxbTMgMGgybTEgMGgxbTEgMGgxbS0zNyAxaDFtMSAwaDNtMSAwaDFtMSAwaDFtNSAwaDFtMSAwaDFtMiAwaDFtMiAwaDFtMSAwaDFtMyAwaDFtMyAwaDFtMSAwaDNtLTM3IDFoMW01IDBoMW0zIDBoMW0xIDBoMm0xIDBoMm0yIDBoMm0xIDBoM20xIDBoMW0xIDBoMW0yIDBoMW0xIDBoMW0tMzQgMWg3bTIgMGgzbTEgMGgxbTEgMGgxbTMgMGgybTEgMGgxbTEgMGgxbTEgMGgxbTEgMGg0bTEgMGgxbTIgMGgxIi8+PC9nPjwvc3ZnPgo=" alt="QR code linking to the hackathon card">
+  <p class="foot">Scan to follow along — everything in this deck is on that page.</p>
+</section>
+
+<section class="slide">
+  <p class="num">01 — The problem</p>
+  <h2>Solr's query syntax is the barrier, not Solr</h2>
+  <p>To ask a straightforward question you first have to know this:</p>
+  <pre><code>q=title:"star wars" AND genre_s:"sci-fi"&amp;fq=year_i:[2000 TO *]
+&amp;facet=true&amp;facet.field=genre_s&amp;sort=score desc&amp;rows=10</code></pre>
+  <p>Every parameter is learnable. All of them at once, while you are trying to answer a
+  question, is where people give up.</p>
+</section>
+
+<section class="slide">
+  <p class="num">02 — What MCP changes</p>
+  <h2>You describe the question. The assistant writes the query.</h2>
+  <p class="q">“Find sci-fi shows released after 2015 rated 8 or above, sorted by rating,
+  with a platform breakdown.”</p>
+  <p>The assistant produces the parameters above because the tool descriptions told it how.
+  That translation layer is the entire product — the server exposes Solr operations as MCP
+  tools, and any MCP client can call them.</p>
+  <ul>
+    <li><b>11 tools</b> — search, index (JSON/CSV/XML), collections, schema</li>
+    <li><b>2 resources</b> — live collection list, live schema</li>
+    <li><b>6 prompts</b> — guided workflows your client may surface as slash commands</li>
+  </ul>
+</section>
+
+<section class="slide">
+  <p class="num">03 — Ten minutes, start to query</p>
+  <h2>No clone, no build</h2>
+  <pre><code><span class="tok-c"># 1. Solr — SolrCloud in one container</span>
+docker run -d --name solr-mcp-demo -p 8983:8983 \
+  solr:9-slim solr start -c -f
+
+<span class="tok-c"># 2. The server — Claude Code shown; every client is on the card</span>
+claude mcp add solr-mcp -- docker run -i --rm \
+  --add-host=host.docker.internal:host-gateway \
+  -e SOLR_URL=http://host.docker.internal:8983/solr/ \
+  ghcr.io/adityamparikh/solr-mcp:coc2026</code></pre>
+  <p>Then talk to it. Claude Desktop, Claude Code, VS Code / Copilot, Cursor, Zed, IntelliJ,
+  or MCP Inspector — the card has the exact block for each.</p>
+</section>
+
+<section class="slide">
+  <p class="num">04 — The interesting part</p>
+  <h2>Why field types decide what you can ask</h2>
+  <p>Index 61 shows with no schema at all. It works — every document lands. Then ask for a
+  breakdown by platform:</p>
+  <pre><code>{ "numFound": 61, "facets": { "platform": {} } }</code></pre>
+  <p>Sixty-one matched. The query succeeded. There is simply no answer — and nothing tells
+  you the <b>data</b> is fine and the <b>field type</b> is the problem.</p>
+  <table>
+    <thead><tr><th></th><th>Schemaless</th><th>Designed</th></tr></thead>
+    <tbody>
+      <tr><td><code>platform</code></td><td><code>text_general</code></td><td><code>string</code> + docValues</td></tr>
+      <tr><td><code>imdb_rating</code></td><td><code>pdoubles</code> — multi-valued</td><td><code>pdouble</code></td></tr>
+      <tr><td>Breakdown</td><td>empty</td><td>Netflix 20, Prime 20, HBO 7…</td></tr>
+    </tbody>
+  </table>
+  <p>Same data, same question, same tool. The only change is that someone decided what the
+  fields meant.</p>
+</section>
+
+<section class="slide">
+  <p class="num">05 — Beyond search</p>
+  <h2>Ask about the index itself</h2>
+  <div class="two">
+    <div>
+      <p class="q">“Is the shows collection healthy?”</p>
+      <p class="q">“What's my query result cache hit ratio, and what does that tell me?”</p>
+      <p class="q">“Which fields can I facet on, and which can I sort by?”</p>
+    </div>
+    <div>
+      <p>That last one is the one to try. The assistant has the schema <em>and</em> knows
+      Solr's type semantics, so it answers a question that would otherwise mean reading
+      <code>managed-schema</code> and knowing what <code>docValues</code> implies.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="num">06 — Take it further</p>
+  <h2>It's an incubating ASF project. Come break it.</h2>
+  <ul>
+    <li>Index your own JSON, CSV or XML — see what the guesser makes of it</li>
+    <li>Add a <code>DenseVectorField</code> and try vector search</li>
+    <li>Describe a dataset in words, ask it to design the schema</li>
+    <li>Point it at a Solr you already run — <code>SOLR_URL</code> is the only setting</li>
+  </ul>
+  <p><b>github.com/apache/solr-mcp</b> · <code>#solr-mcp</code> on ASF Slack</p>
+  <p>Good first issues are client guides, tool descriptions and error messages — all of which
+  directly change how well an assistant uses the server. If something confused you today,
+  that's a bug worth filing.</p>
+  <p class="foot">Apache Solr MCP Server — incubating, Apache License 2.0. Solr, Apache and the
+  feather logo are trademarks of the Apache Software Foundation. The container image shown is a
+  personal pre-release build, not an Apache release.</p>
+</section>
+
+</div>

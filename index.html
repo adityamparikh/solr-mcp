@@ -1,0 +1,1530 @@
+<title>Solr MCP — Hackathon Card, Community over Code 2026</title>
+
+<style>
+/* ============================================================
+   Tokens — Glasgow School of Art / Mackintosh palette
+   ============================================================ */
+:root {
+  --ground:   #F1F3F0;
+  --surface:  #FFFFFF;
+  --surface-2:#E8EBE6;
+  --ink:      #15171A;
+  --ink-2:    #585C63;
+  --ink-3:    #83888F;
+  --rule:     #D3D8D1;
+  --rule-2:   #BFC5BD;
+  --accent:   #9E2A4E;
+  --accent-soft: #9E2A4E14;
+  --sage:     #4F6650;
+  --sage-soft:#4F665014;
+  --amber:    #7E5A0D;
+  --amber-soft:#7E5A0D14;
+  --code-bg:  #14161A;
+  --code-ink: #DFE3DC;
+  --shadow:   0 1px 2px #15171A0d, 0 6px 18px #15171A0a;
+
+  --f-display: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  --f-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --f-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+
+  --measure: 68ch;
+  --spine: 2.75rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ground:   #131417;
+    --surface:  #1A1C20;
+    --surface-2:#22252A;
+    --ink:      #E9EBE6;
+    --ink-2:    #A0A5AC;
+    --ink-3:    #7C828A;
+    --rule:     #2A2D32;
+    --rule-2:   #3A3E45;
+    --accent:   #E4778F;
+    --accent-soft: #E4778F1a;
+    --sage:     #93AC93;
+    --sage-soft:#93AC931a;
+    --amber:    #C9A24A;
+    --amber-soft:#C9A24A1a;
+    --code-bg:  #0D0E11;
+    --code-ink: #DFE3DC;
+    --shadow:   0 1px 2px #0006, 0 6px 20px #0004;
+  }
+}
+:root[data-theme="dark"] {
+  --ground:#131417; --surface:#1A1C20; --surface-2:#22252A;
+  --ink:#E9EBE6; --ink-2:#A0A5AC; --ink-3:#7C828A;
+  --rule:#2A2D32; --rule-2:#3A3E45;
+  --accent:#E4778F; --accent-soft:#E4778F1a;
+  --sage:#93AC93; --sage-soft:#93AC931a;
+  --amber:#C9A24A; --amber-soft:#C9A24A1a;
+  --code-bg:#0D0E11; --code-ink:#DFE3DC;
+  --shadow:0 1px 2px #0006, 0 6px 20px #0004;
+}
+:root[data-theme="light"] {
+  --ground:#F1F3F0; --surface:#FFFFFF; --surface-2:#E8EBE6;
+  --ink:#15171A; --ink-2:#585C63; --ink-3:#83888F;
+  --rule:#D3D8D1; --rule-2:#BFC5BD;
+  --accent:#9E2A4E; --accent-soft:#9E2A4E14;
+  --sage:#4F6650; --sage-soft:#4F665014;
+  --amber:#7E5A0D; --amber-soft:#7E5A0D14;
+  --code-bg:#14161A; --code-ink:#DFE3DC;
+  --shadow:0 1px 2px #15171A0d, 0 6px 18px #15171A0a;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--f-body);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-text-size-adjust: 100%;
+}
+
+.wrap { max-width: 62rem; margin: 0 auto; padding: 0 1.25rem 6rem; }
+
+/* ============================================================
+   Masthead — Mackintosh vertical + rose
+   ============================================================ */
+.masthead {
+  padding: 3rem 0 2rem;
+  border-bottom: 1px solid var(--rule);
+  display: grid;
+  gap: 1.25rem;
+}
+.eyebrow {
+  font-size: .7rem;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: 600;
+  margin: 0;
+}
+.masthead h1 {
+  font-family: var(--f-display);
+  font-weight: 400;
+  font-size: clamp(2.1rem, 6vw, 3.4rem);
+  line-height: 1.08;
+  letter-spacing: -.015em;
+  margin: 0;
+  text-wrap: balance;
+}
+.masthead h1 em { font-style: normal; color: var(--accent); }
+.standfirst {
+  margin: 0;
+  max-width: var(--measure);
+  color: var(--ink-2);
+  font-size: 1.06rem;
+}
+.mast-meta {
+  display: flex; flex-wrap: wrap; gap: .5rem 1.5rem;
+  font-size: .8rem; color: var(--ink-3);
+  padding-top: .25rem;
+}
+.mast-meta b { color: var(--ink-2); font-weight: 600; }
+
+/* Mackintosh rose glyph */
+.rose { width: 42px; height: 42px; flex: none; }
+.rose-row { display: flex; align-items: center; gap: 1rem; }
+
+/* Share block — the card shows its own QR so a visitor can take it to their phone */
+.share {
+  display: flex; align-items: center; gap: 1rem;
+  border: 1px solid var(--rule); border-radius: 3px;
+  background: var(--surface); padding: .85rem 1rem;
+  margin-top: .25rem; max-width: 30rem;
+}
+.share img {
+  width: 88px; height: 88px; flex: none;
+  background: #fff; border-radius: 2px; padding: 4px;
+}
+.share-text { display: grid; gap: .2rem; }
+.share-text b { font-size: .82rem; }
+.share-text span { font-size: .76rem; color: var(--ink-2); line-height: 1.45; }
+.share-text a { font-size: .72rem; word-break: break-all; }
+
+/* ============================================================
+   Sticky nav
+   ============================================================ */
+.navbar {
+  position: sticky; top: 0; z-index: 40;
+  background: color-mix(in srgb, var(--ground) 92%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: 2.5rem;
+}
+.navbar-inner {
+  max-width: 62rem; margin: 0 auto; padding: .55rem 1.25rem;
+  display: flex; align-items: center; gap: .85rem;
+  overflow-x: auto; scrollbar-width: thin;
+}
+.navbar a {
+  font-size: .78rem; color: var(--ink-2); text-decoration: none;
+  white-space: nowrap; padding: .25rem 0;
+  border-bottom: 2px solid transparent;
+  font-variant-numeric: tabular-nums;
+}
+.navbar a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+.navbar a b { color: var(--ink-3); font-weight: 600; margin-right: .3rem; }
+
+/* ============================================================
+   Step spine
+   ============================================================ */
+.step {
+  position: relative;
+  padding-left: var(--spine);
+  padding-bottom: 2.75rem;
+  border-left: 1px solid var(--rule);
+  margin-left: .75rem;
+}
+.step:last-of-type { border-left-color: transparent; }
+.step-num {
+  position: absolute; left: 0; top: .1rem;
+  transform: translateX(-50%);
+  width: 1.7rem; height: 1.7rem; border-radius: 50%;
+  background: var(--surface); border: 1px solid var(--rule-2);
+  color: var(--ink-2);
+  display: grid; place-items: center;
+  font-size: .78rem; font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.step[data-done="1"] .step-num {
+  background: var(--accent); border-color: var(--accent); color: #fff;
+}
+.step-head { display: flex; align-items: baseline; gap: .75rem; flex-wrap: wrap; }
+.step h2 {
+  font-family: var(--f-display); font-weight: 400;
+  font-size: 1.62rem; line-height: 1.2; letter-spacing: -.01em;
+  margin: 0 0 .15rem; text-wrap: balance;
+}
+.step .kicker {
+  font-size: .7rem; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--ink-3); font-weight: 600;
+}
+.step > p { max-width: var(--measure); }
+.done-toggle {
+  margin-left: auto; display: inline-flex; align-items: center; gap: .4rem;
+  font-size: .72rem; color: var(--ink-3); cursor: pointer;
+  user-select: none; white-space: nowrap;
+  border: 1px solid var(--rule); border-radius: 2px;
+  padding: .18rem .5rem; background: transparent;
+  font-family: var(--f-body);
+}
+.done-toggle:hover { border-color: var(--accent); color: var(--accent); }
+.step[data-done="1"] .done-toggle { border-color: var(--accent); color: var(--accent); }
+.step[data-done="1"] > .step-body { opacity: .55; }
+
+h3 {
+  font-family: var(--f-body);
+  font-size: .82rem; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--ink-2); font-weight: 700;
+  margin: 1.75rem 0 .6rem;
+}
+p { margin: 0 0 .9rem; max-width: var(--measure); }
+a { color: var(--accent); }
+
+/* ============================================================
+   Code
+   ============================================================ */
+.codeblock { position: relative; margin: 0 0 1rem; }
+.codeblock pre {
+  margin: 0; padding: .95rem 3.4rem .95rem 1rem;
+  background: var(--code-bg); color: var(--code-ink);
+  border-radius: 3px; overflow-x: auto;
+  font-family: var(--f-mono); font-size: .82rem; line-height: 1.62;
+  tab-size: 2;
+}
+.codeblock pre code { font: inherit; color: inherit; }
+.tok-c { color: #7E8B93; }
+.tok-s { color: #B9C99A; }
+.tok-k { color: #E4778F; }
+.copy {
+  position: absolute; top: .5rem; right: .5rem;
+  font-family: var(--f-body); font-size: .66rem; letter-spacing: .07em;
+  text-transform: uppercase; font-weight: 600;
+  color: #A9B0AE; background: #FFFFFF14;
+  border: 1px solid #FFFFFF24; border-radius: 2px;
+  padding: .22rem .45rem; cursor: pointer;
+}
+.copy:hover { color: #fff; background: #FFFFFF24; }
+.copy[data-copied="1"] { color: #B9C99A; border-color: #B9C99A66; }
+code.inline {
+  font-family: var(--f-mono); font-size: .87em;
+  background: var(--surface-2); border-radius: 2px;
+  padding: .08em .32em;
+}
+
+/* ============================================================
+   Selectors (OS / runtime / client)
+   ============================================================ */
+.picker {
+  background: var(--surface); border: 1px solid var(--rule);
+  border-radius: 3px; padding: .9rem 1rem; margin: 0 0 1.5rem;
+  display: grid; gap: .85rem; box-shadow: var(--shadow);
+}
+.picker-row { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+.picker-label {
+  font-size: .68rem; letter-spacing: .13em; text-transform: uppercase;
+  color: var(--ink-3); font-weight: 700; width: 5.2rem; flex: none;
+}
+.seg { display: flex; flex-wrap: wrap; gap: .3rem; }
+.seg button {
+  font-family: var(--f-body); font-size: .78rem;
+  padding: .3rem .7rem; cursor: pointer;
+  background: transparent; color: var(--ink-2);
+  border: 1px solid var(--rule-2); border-radius: 2px;
+}
+.seg button:hover { border-color: var(--accent); color: var(--accent); }
+.seg button[aria-pressed="true"] {
+  background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600;
+}
+
+/* ============================================================
+   Callouts
+   ============================================================ */
+.note {
+  border-left: 3px solid var(--rule-2);
+  background: var(--surface);
+  padding: .8rem 1rem; margin: 0 0 1.15rem;
+  border-radius: 0 3px 3px 0;
+  max-width: var(--measure);
+}
+.note p:last-child { margin-bottom: 0; }
+.note .tag {
+  display: inline-block; font-size: .64rem; letter-spacing: .13em;
+  text-transform: uppercase; font-weight: 700; margin-bottom: .3rem;
+}
+.note.warn { border-left-color: var(--amber); background: var(--amber-soft); }
+.note.warn .tag { color: var(--amber); }
+.note.good { border-left-color: var(--sage); background: var(--sage-soft); }
+.note.good .tag { color: var(--sage); }
+.note.bug  { border-left-color: var(--accent); background: var(--accent-soft); }
+.note.bug .tag { color: var(--accent); }
+
+/* ============================================================
+   Prompt cards — the things people actually say out loud
+   ============================================================ */
+.prompts { display: grid; gap: .55rem; margin-bottom: 1.1rem; }
+.prompt {
+  display: grid; grid-template-columns: 1fr auto; align-items: center;
+  gap: .75rem;
+  background: var(--surface); border: 1px solid var(--rule);
+  border-radius: 3px; padding: .6rem .55rem .6rem .9rem;
+}
+.prompt q {
+  font-family: var(--f-display); font-size: 1.02rem; quotes: '"' '"';
+  line-height: 1.4;
+}
+.prompt .why {
+  display: block; font-family: var(--f-body); font-size: .7rem;
+  color: var(--ink-3); letter-spacing: .04em; margin-top: .18rem;
+}
+.prompt .why b { color: var(--ink-2); font-family: var(--f-mono); font-weight: 400; }
+.copy-sm {
+  font-family: var(--f-body); font-size: .64rem; letter-spacing: .07em;
+  text-transform: uppercase; font-weight: 600;
+  color: var(--ink-3); background: transparent;
+  border: 1px solid var(--rule-2); border-radius: 2px;
+  padding: .28rem .5rem; cursor: pointer; white-space: nowrap;
+}
+.copy-sm:hover { color: var(--accent); border-color: var(--accent); }
+.copy-sm[data-copied="1"] { color: var(--sage); border-color: var(--sage); }
+
+/* ============================================================
+   Tables
+   ============================================================ */
+.tablewrap { overflow-x: auto; margin: 0 0 1.15rem; }
+table { border-collapse: collapse; width: 100%; font-size: .85rem; }
+th, td {
+  text-align: left; padding: .45rem .7rem;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: top;
+}
+th {
+  font-size: .68rem; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--ink-3); font-weight: 700; white-space: nowrap;
+}
+td code { font-family: var(--f-mono); font-size: .8rem; }
+tbody tr:last-child td { border-bottom: none; }
+.num { font-variant-numeric: tabular-nums; text-align: right; }
+
+/* ============================================================
+   Details
+   ============================================================ */
+details.panel {
+  background: var(--surface); border: 1px solid var(--rule);
+  border-radius: 3px; margin: 0 0 1rem; overflow: hidden;
+}
+details.panel > summary {
+  cursor: pointer; padding: .8rem 1rem;
+  font-weight: 600; font-size: .95rem;
+  display: flex; align-items: center; gap: .6rem;
+  list-style: none;
+}
+details.panel > summary::-webkit-details-marker { display: none; }
+details.panel > summary::before {
+  content: "▸"; color: var(--accent); font-size: .8rem;
+  transition: transform .15s ease;
+}
+details.panel[open] > summary::before { transform: rotate(90deg); }
+details.panel > summary .hint {
+  font-weight: 400; font-size: .78rem; color: var(--ink-3); margin-left: auto;
+}
+.panel-body { padding: 0 1rem 1rem; border-top: 1px solid var(--rule); padding-top: 1rem; }
+
+/* ============================================================
+   Footer
+   ============================================================ */
+.footer {
+  border-top: 1px solid var(--rule); margin-top: 2rem;
+  padding-top: 1.5rem; font-size: .8rem; color: var(--ink-3);
+}
+.footer a { color: var(--ink-2); }
+
+.linkrow { display: flex; flex-wrap: wrap; gap: .5rem 1.25rem; margin-bottom: 1rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+@media (max-width: 620px) {
+  .picker-label { width: auto; }
+  .prompt { grid-template-columns: 1fr; }
+  .prompt .copy-sm { justify-self: start; }
+  .step { padding-left: 1.6rem; margin-left: .6rem; }
+}
+</style>
+
+<div class="navbar">
+  <div class="navbar-inner">
+    <a href="#s0"><b>0</b>Prereqs</a>
+    <a href="#s1"><b>1</b>Solr</a>
+    <a href="#s2"><b>2</b>Connect</a>
+    <a href="#s3"><b>3</b>Schemaless</a>
+    <a href="#s4"><b>4</b>The wall</a>
+    <a href="#s5"><b>5</b>Real schema</a>
+    <a href="#s6"><b>6</b>Queries</a>
+    <a href="#s7"><b>7</b>Introspect</a>
+    <a href="#more">Going further</a>
+  </div>
+</div>
+
+<div class="wrap">
+
+<header class="masthead">
+  <div class="rose-row">
+    <svg class="rose" viewBox="0 0 42 42" aria-hidden="true" fill="none">
+      <rect x="1" y="1" width="40" height="40" stroke="currentColor" stroke-opacity=".25"/>
+      <circle cx="21" cy="21" r="13" stroke="var(--accent)" stroke-width="1.5"/>
+      <circle cx="21" cy="21" r="8"  stroke="var(--accent)" stroke-width="1.5"/>
+      <circle cx="21" cy="21" r="3.4" fill="var(--accent)"/>
+      <path d="M21 1v7M21 34v7M1 21h7M34 21h7" stroke="currentColor" stroke-opacity=".35" stroke-width="1.5"/>
+    </svg>
+    <p class="eyebrow">Community over Code 2026 · Glasgow · Hackathon card</p>
+  </div>
+  <h1>Talk to <em>Apache Solr</em> in plain English.</h1>
+  <p class="standfirst">
+    Solr MCP is a Model Context Protocol server that hands your AI assistant eleven Solr
+    tools — search, indexing, schema and collection management. This card takes you from
+    nothing installed to running faceted queries against a real index. Ten minutes, no
+    Solr syntax required.
+  </p>
+  <div class="mast-meta">
+    <span><b>Time</b> ~10 min</span>
+    <span><b>Needs</b> Docker, or Java 25</span>
+    <span><b>Dataset</b> 61 streaming shows</span>
+    <span><b>Tools</b> 11 · 2 resources · 6 prompts</span>
+  </div>
+  <div class="share">
+    <img src="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiPz4KPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI5MDAiIGhlaWdodD0iOTAwIiBjbGFzcz0ic2Vnbm8iPjxnIHRyYW5zZm9ybT0ic2NhbGUoMjApIj48cGF0aCBmaWxsPSIjZmZmIiBkPSJNMCAwaDQ1djQ1aC00NXoiLz48cGF0aCBjbGFzcz0icXJsaW5lIiBzdHJva2U9IiMxNTE3MWEiIGQ9Ik00IDQuNWg3bTMgMGgybTEgMGgxbTEgMGgxbTMgMGgybTIgMGgxbTIgMGgxbTMgMGg3bS0zNyAxaDFtNSAwaDFtMSAwaDJtMiAwaDFtMiAwaDFtMiAwaDFtMiAwaDFtMSAwaDFtMSAwaDJtMyAwaDFtNSAwaDFtLTM3IDFoMW0xIDBoM20xIDBoMW0xIDBoMW0yIDBoNW0yIDBoMW0xIDBoMW0xIDBoMW0xIDBoM20xIDBoMW0xIDBoMW0xIDBoM20xIDBoMW0tMzcgMWgxbTEgMGgzbTEgMGgxbTEgMGgxbTIgMGg3bTEgMGgzbTEgMGg0bTMgMGgxbTEgMGgzbTEgMGgxbS0zNyAxaDFtMSAwaDNtMSAwaDFtMSAwaDJtMSAwaDFtMSAwaDNtMSAwaDFtMSAwaDJtMiAwaDJtMSAwaDFtMSAwaDFtMSAwaDFtMSAwaDNtMSAwaDFtLTM3IDFoMW01IDBoMW0xIDBoM20xIDBoM20xIDBoMm0yIDBoMW0xIDBoMW0xIDBoM20xIDBoMW0xIDBoMW01IDBoMW0tMzcgMWg3bTEgMGgxbTEgMGgxbTEgMGgxbTEgMGgxbTEgMGgxbTEgMGgxbTEgMGgxbTEgMGgxbTEgMGgxbTEgMGgxbTEgMGgxbTEgMGg3bS0yOCAxaDJtMiAwaDFtMiAwaDltMSAwaDNtLTI3IDFoMW0yIDBoNG0xIDBoMW0zIDBoMW00IDBoM20xIDBoMW0xIDBoMm0xIDBoMm0xIDBoNW0tMzYgMWg1bTIgMGgxbTEgMGgybTEgMGgybTEgMGgxbTYgMGg0bTEgMGgxbTIgMGgybTEgMGgybTEgMGgxbS0zNyAxaDFtNSAwaDZtMSAwaDRtMSAwaDFtMSAwaDVtMiAwaDRtMSAwaDFtMyAwaDFtLTM3IDFoMW0zIDBoMm0xIDBoMm0xIDBoMW00IDBoMm0yIDBoMm0zIDBoMW0xIDBoMW00IDBoM20yIDBoMW0tMzcgMWgxbTIgMGgxbTIgMGgxbTMgMGgzbTEgMGg0bTYgMGgxbTIgMGgybTEgMGgybTEgMGgxbS0zNCAxaDFtMiAwaDFtNiAwaDFtMSAwaDRtMSAwaDFtMSAwaDFtMSAwaDFtMSAwaDNtMSAwaDFtMSAwaDNtMiAwaDNtLTM3IDFoMW0xIDBoMm0xIDBoMm00IDBoMm0yIDBoMW0xIDBoMm02IDBoNG0yIDBoNG0xIDBoMW0tMzYgMWgxbTEgMGgxbTMgMGgybTIgMGgybTIgMGgybTEgMGg1bTMgMGgybTEgMGgxbTEgMGgxbTEgMGgxbTEgMGgxbS0zNCAxaDJtMiAwaDNtNSAwaDNtMSAwaDFtMSAwaDFtMiAwaDFtMyAwaDFtMiAwaDJtMyAwaDFtLTM2IDFoMW0yIDBoMm0yIDBoMm0xIDBoMW0xIDBoMW0xIDBoM20xIDBoM20yIDBoM20xIDBoNW0xIDBoMW0yIDBoMW0tMzcgMWgzbTIgMGgzbTIgMGgxbTQgMGgxbTUgMGgxbTIgMGg0bTEgMGgxbTIgMGgzbTEgMGgxbS0zNCAxaDNtMiAwaDFtMiAwaDNtNSAwaDFtMSAwaDFtMSAwaDFtMiAwaDFtNiAwaDFtMSAwaDFtLTM1IDFoMW0xIDBoMm0xIDBoMW0xIDBoM20yIDBoMm0xIDBoMW0yIDBoMW0zIDBoMW0zIDBoMm0xIDBoMW00IDBoMW0tMzYgMWgybTEgMGgxbTEgMGgxbTEgMGgybTIgMGgxbTEgMGgxbTIgMGgxbTEgMGgzbTEgMGgybTMgMGgxbTEgMGgzbTEgMGgxbTIgMGgxbS0zNSAxaDJtMSAwaDJtMSAwaDJtMiAwaDFtMyAwaDJtMSAwaDFtNCAwaDVtMiAwaDJtMyAwaDFtLTM3IDFoMW0yIDBoMm0yIDBoNG0xIDBoMW0xIDBoMm0yIDBoMW0zIDBoM20yIDBoMW0xIDBoMW0xIDBoMW0xIDBoMW0xIDBoMm0tMzcgMWgybTEgMGgxbTEgMGg3bTIgMGgxbTEgMGgzbTYgMGgybTMgMGgybTEgMGgxbTEgMGgybS0zNiAxaDFtMiAwaDFtMiAwaDJtMSAwaDVtMSAwaDFtMiAwaDRtNCAwaDJtMSAwaDFtMiAwaDJtMSAwaDFtLTM3IDFoM20yIDBoM20xIDBoMm0yIDBoMm0xIDBoMW0xIDBoMW0yIDBoM20xIDBoM20xIDBoM20xIDBoNG0tMzUgMWgxbTEgMGgybTEgMGgxbTEgMGgxbTggMGgxbTEgMGgxbTEgMGgxbTMgMGgybTEgMGgybTIgMGgxbS0zNCAxaDJtNCAwaDFtMiAwaDFtMiAwaDFtMSAwaDFtMSAwaDFtMiAwaDNtMSAwaDFtMyAwaDZtMiAwaDFtLTI4IDFoMW0xIDBoMm0xIDBoMm01IDBoMm0xIDBoM20yIDBoMW0zIDBoMm0yIDBoMW0tMzcgMWg3bTEgMGgzbTEgMGgxbTEgMGg1bTIgMGgxbTEgMGgxbTIgMGgxbTEgMGgxbTEgMGgxbTEgMGgzbTEgMGgxbS0zNyAxaDFtNSAwaDFtMSAwaDZtMSAwaDJtMiAwaDFtMSAwaDRtMSAwaDNtMyAwaDJtLTM0IDFoMW0xIDBoM20xIDBoMW0yIDBoM20zIDBoMW00IDBoMW0xIDBoMW0xIDBoMW0yIDBoNm0zIDBoMW0tMzcgMWgxbTEgMGgzbTEgMGgxbTQgMGgxbTIgMGgybTEgMGg2bTEgMGgybTEgMGgxbTMgMGgybTEgMGgxbTEgMGgxbS0zNyAxaDFtMSAwaDNtMSAwaDFtMSAwaDFtNSAwaDFtMSAwaDFtMiAwaDFtMiAwaDFtMSAwaDFtMyAwaDFtMyAwaDFtMSAwaDNtLTM3IDFoMW01IDBoMW0zIDBoMW0xIDBoMm0xIDBoMm0yIDBoMm0xIDBoM20xIDBoMW0xIDBoMW0yIDBoMW0xIDBoMW0tMzQgMWg3bTIgMGgzbTEgMGgxbTEgMGgxbTMgMGgybTEgMGgxbTEgMGgxbTEgMGgxbTEgMGg0bTEgMGgxbTIgMGgxIi8+PC9nPjwvc3ZnPgo=" alt="QR code linking to this page">
+    <span class="share-text">
+      <b>Take this with you</b>
+      <span>Scan to open this card on your phone, then work through it beside your laptop.</span>
+      <a href="https://adityamparikh.github.io/solr-mcp/">adityamparikh.github.io/solr-mcp</a>
+    </span>
+  </div>
+</header>
+
+<div style="height:1.5rem"></div>
+
+<!-- ══════════════════════════════════════════════════════════
+     STEP 0
+     ══════════════════════════════════════════════════════════ -->
+<section class="step" id="s0" data-step="0">
+  <div class="step-num">0</div>
+  <div class="step-body">
+    <div class="step-head">
+      <div>
+        <p class="kicker">Before anything else</p>
+        <h2>Pick your runtime</h2>
+      </div>
+      <button class="done-toggle" type="button">Mark done</button>
+    </div>
+    <p>
+      Two ways to run the server. Docker is the shorter road — the image carries its own
+      Java, so nothing on your machine needs to change.
+    </p>
+
+    <div class="picker">
+      <div class="picker-row">
+        <span class="picker-label">Your OS</span>
+        <div class="seg" data-group="os">
+          <button type="button" data-val="macos" aria-pressed="true">macOS</button>
+          <button type="button" data-val="windows" aria-pressed="false">Windows</button>
+          <button type="button" data-val="linux" aria-pressed="false">Linux</button>
+          <button type="button" data-val="wsl" aria-pressed="false">WSL</button>
+        </div>
+      </div>
+      <div class="picker-row">
+        <span class="picker-label">Run via</span>
+        <div class="seg" data-group="runtime">
+          <button type="button" data-val="docker" aria-pressed="true">Docker</button>
+          <button type="button" data-val="jar" aria-pressed="false">JAR</button>
+        </div>
+      </div>
+      <div class="picker-row">
+        <span class="picker-label">Client</span>
+        <div class="seg" data-group="client">
+          <button type="button" data-val="claude-code" aria-pressed="true">Claude Code</button>
+          <button type="button" data-val="claude-desktop" aria-pressed="false">Claude Desktop</button>
+          <button type="button" data-val="copilot" aria-pressed="false">VS Code / Copilot</button>
+          <button type="button" data-val="cursor" aria-pressed="false">Cursor</button>
+          <button type="button" data-val="zed" aria-pressed="false">Zed</button>
+          <button type="button" data-val="intellij" aria-pressed="false">IntelliJ</button>
+          <button type="button" data-val="inspector" aria-pressed="false">MCP Inspector</button>
+        </div>
+      </div>
+    </div>
+
+    <p style="font-size:.85rem;color:var(--ink-3)">
+      These three choices drive every command on this page. Set them once.
+    </p>
+
+    <div data-runtime="docker">
+      <h3>Check Docker</h3>
+      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>docker --version</code></pre></div>
+      <p>Any recent version works. If this errors, install
+        <a href="https://docs.docker.com/get-docker/">Docker Desktop</a> (macOS/Windows) or
+        Docker Engine (Linux).</p>
+    </div>
+
+    <div data-runtime="jar">
+      <h3>Check your Java</h3>
+      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>java -version</code></pre></div>
+
+      <div class="note warn">
+        <span class="tag">Read this before you file a bug</span>
+        <p>
+          The JAR is built for <b>Java 25</b>. On Java 17 or 21 it fails with
+          <code class="inline">UnsupportedClassVersionError</code> — and because STDIO servers
+          are launched silently by your client, most clients show only
+          <em>"server failed to start"</em> with no reason. If the server won't connect,
+          check this first.
+        </p>
+      </div>
+
+      <h3>Install Java 25</h3>
+      <div class="codeblock" data-os="macos"><button class="copy" type="button">Copy</button><pre><code><span class="tok-c"># SDKMAN (recommended — no sudo, easy to switch back)</span>
+sdk install java 25-tem
+
+<span class="tok-c"># or Homebrew</span>
+brew install --cask temurin@25</code></pre></div>
+      <div class="codeblock" data-os="windows"><button class="copy" type="button">Copy</button><pre><code>winget install EclipseAdoptium.Temurin.25.JDK</code></pre></div>
+      <div class="codeblock" data-os="linux wsl"><button class="copy" type="button">Copy</button><pre><code><span class="tok-c"># SDKMAN (recommended — no sudo, easy to switch back)</span>
+curl -s "https://get.sdkman.io" | bash
+source "$HOME/.sdkman/bin/sdkman-init.sh"
+sdk install java 25-tem</code></pre></div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     STEP 1
+     ══════════════════════════════════════════════════════════ -->
+<section class="step" id="s1" data-step="1">
+  <div class="step-num">1</div>
+  <div class="step-body">
+    <div class="step-head">
+      <div>
+        <p class="kicker">One container, no clone</p>
+        <h2>Start Solr</h2>
+      </div>
+      <button class="done-toggle" type="button">Mark done</button>
+    </div>
+    <p>
+      SolrCloud mode with embedded ZooKeeper, which is what the collection tools need.
+      Ready in about seven seconds.
+    </p>
+
+    <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>docker run -d --name solr-mcp-demo -p 8983:8983 solr:9-slim solr start -c -f</code></pre></div>
+
+    <p>Confirm it's up — this should return an empty collection list:</p>
+    <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>curl "http://localhost:8983/solr/admin/collections?action=LIST"</code></pre></div>
+
+    <p>
+      The admin UI is at <a href="http://localhost:8983/solr/">localhost:8983/solr</a>.
+      Keep it open on a second screen if you have one — watching collections appear as you
+      talk to the assistant is half the fun.
+    </p>
+
+    <div class="note good">
+      <span class="tag">Why not docker compose</span>
+      <p>
+        The repo ships a <code class="inline">compose.yaml</code>, but it exists to preload the
+        <em>films</em> and <em>books</em> samples. This card builds its own collection from
+        scratch, so a single container is all you need — no clone, no Gradle, no build.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     STEP 2
+     ══════════════════════════════════════════════════════════ -->
+<section class="step" id="s2" data-step="2">
+  <div class="step-num">2</div>
+  <div class="step-body">
+    <div class="step-head">
+      <div>
+        <p class="kicker">Wire it to your assistant</p>
+        <h2>Connect the server</h2>
+      </div>
+      <button class="done-toggle" type="button">Mark done</button>
+    </div>
+
+    <p>
+      Commands below follow the three choices you made in step 0. Change them there and
+      everything on this page updates.
+    </p>
+
+    <div class="note warn" data-runtime="docker">
+      <span class="tag">Unofficial build</span>
+      <p>
+        <code class="inline">ghcr.io/adityamparikh/solr-mcp:coc2026</code> is a personal
+        pre-release build for this event — <b>not</b> an Apache release. Apache Solr MCP is an
+        incubating project and has not cut a voted release yet, so no official image exists.
+        Building it yourself is covered under <a href="#build-local">Build it yourself</a>.
+      </p>
+    </div>
+
+    <div class="note warn" data-runtime="jar" data-os="windows wsl">
+      <span class="tag">Windows paths in JSON</span>
+      <p>
+        Backslashes are escape characters in JSON, so a Windows path must double them —
+        <code class="inline">"C:\\\\Users\\\\you\\\\solr-mcp-1.0.0-SNAPSHOT.jar"</code> — or just
+        use forward slashes, which Java accepts on Windows:
+        <code class="inline">"C:/Users/you/solr-mcp-1.0.0-SNAPSHOT.jar"</code>. Forward slashes
+        are the safer habit.
+      </p>
+    </div>
+
+    <!-- ── Claude Code ── -->
+    <div data-client="claude-code">
+      <h3>Claude Code</h3>
+      <div class="codeblock" data-runtime="docker"><button class="copy" type="button">Copy</button><pre><code>claude mcp add solr-mcp -- docker run -i --rm \
+  --add-host=host.docker.internal:host-gateway \
+  -e SOLR_URL=http://host.docker.internal:8983/solr/ \
+  ghcr.io/adityamparikh/solr-mcp:coc2026</code></pre></div>
+      <div class="codeblock" data-runtime="jar"><button class="copy" type="button">Copy</button><pre><code>claude mcp add solr-mcp \
+  -e SOLR_URL=http://localhost:8983/solr/ \
+  -- java -jar /absolute/path/to/solr-mcp-1.0.0-SNAPSHOT.jar</code></pre></div>
+      <p style="font-size:.86rem;color:var(--ink-2)">
+        The <code class="inline">--</code> matters: it stops Claude Code reading the server's
+        own flags as its own. Verify with <code class="inline">claude mcp list</code>.
+      </p>
+    </div>
+
+    <!-- ── Claude Desktop ── -->
+    <div data-client="claude-desktop">
+      <h3>Claude Desktop</h3>
+      <p>Edit the config file, then <b>fully quit and reopen</b> Claude Desktop:</p>
+      <div class="codeblock" data-os="macos"><button class="copy" type="button">Copy</button><pre><code>~/Library/Application Support/Claude/claude_desktop_config.json</code></pre></div>
+      <div class="codeblock" data-os="windows wsl"><button class="copy" type="button">Copy</button><pre><code>%APPDATA%\Claude\claude_desktop_config.json</code></pre></div>
+      <div class="codeblock" data-os="linux"><button class="copy" type="button">Copy</button><pre><code>~/.config/Claude/claude_desktop_config.json</code></pre></div>
+      <div class="note warn" data-os="wsl">
+        <span class="tag">On WSL</span>
+        <p>
+          Claude Desktop runs on the Windows host, not inside WSL — so use the Windows path above
+          and let Docker Desktop's WSL integration handle the container.
+        </p>
+      </div>
+      <div class="note warn" data-os="linux">
+        <span class="tag">On Linux</span>
+        <p>
+          There is no official Claude Desktop build for Linux. That path is where community
+          builds look; if you're on Linux, <b>Claude Code</b> or <b>MCP Inspector</b> is the
+          smoother route.
+        </p>
+      </div>
+
+      <div class="codeblock" data-runtime="docker"><button class="copy" type="button">Copy</button><pre><code>{
+  <span class="tok-s">"mcpServers"</span>: {
+    <span class="tok-s">"solr-mcp"</span>: {
+      <span class="tok-s">"command"</span>: <span class="tok-s">"docker"</span>,
+      <span class="tok-s">"args"</span>: [<span class="tok-s">"run"</span>, <span class="tok-s">"-i"</span>, <span class="tok-s">"--rm"</span>,
+               <span class="tok-s">"--add-host=host.docker.internal:host-gateway"</span>,
+               <span class="tok-s">"-e"</span>, <span class="tok-s">"SOLR_URL=http://host.docker.internal:8983/solr/"</span>,
+               <span class="tok-s">"ghcr.io/adityamparikh/solr-mcp:coc2026"</span>]
+    }
+  }
+}</code></pre></div>
+      <div class="codeblock" data-runtime="jar"><button class="copy" type="button">Copy</button><pre><code>{
+  <span class="tok-s">"mcpServers"</span>: {
+    <span class="tok-s">"solr-mcp"</span>: {
+      <span class="tok-s">"command"</span>: <span class="tok-s">"java"</span>,
+      <span class="tok-s">"args"</span>: [<span class="tok-s">"-jar"</span>, <span class="tok-s">"/absolute/path/to/solr-mcp-1.0.0-SNAPSHOT.jar"</span>],
+      <span class="tok-s">"env"</span>: { <span class="tok-s">"SOLR_URL"</span>: <span class="tok-s">"http://localhost:8983/solr/"</span> }
+    }
+  }
+}</code></pre></div>
+    </div>
+
+    <!-- ── VS Code ── -->
+    <div data-client="copilot">
+      <h3>VS Code / GitHub Copilot</h3>
+      <p>
+        Needs VS Code 1.99+. Create <code class="inline">.vscode/mcp.json</code> in your
+        workspace, then use Copilot Chat in <b>Agent</b> mode.
+      </p>
+      <div class="codeblock" data-runtime="docker"><button class="copy" type="button">Copy</button><pre><code>{
+  <span class="tok-s">"servers"</span>: {
+    <span class="tok-s">"solr-mcp"</span>: {
+      <span class="tok-s">"type"</span>: <span class="tok-s">"stdio"</span>,
+      <span class="tok-s">"command"</span>: <span class="tok-s">"docker"</span>,
+      <span class="tok-s">"args"</span>: [<span class="tok-s">"run"</span>, <span class="tok-s">"-i"</span>, <span class="tok-s">"--rm"</span>,
+               <span class="tok-s">"--add-host=host.docker.internal:host-gateway"</span>,
+               <span class="tok-s">"-e"</span>, <span class="tok-s">"SOLR_URL=http://host.docker.internal:8983/solr/"</span>,
+               <span class="tok-s">"ghcr.io/adityamparikh/solr-mcp:coc2026"</span>]
+    }
+  }
+}</code></pre></div>
+      <div class="codeblock" data-runtime="jar"><button class="copy" type="button">Copy</button><pre><code>{
+  <span class="tok-s">"servers"</span>: {
+    <span class="tok-s">"solr-mcp"</span>: {
+      <span class="tok-s">"type"</span>: <span class="tok-s">"stdio"</span>,
+      <span class="tok-s">"command"</span>: <span class="tok-s">"java"</span>,
+      <span class="tok-s">"args"</span>: [<span class="tok-s">"-jar"</span>, <span class="tok-s">"/absolute/path/to/solr-mcp-1.0.0-SNAPSHOT.jar"</span>],
+      <span class="tok-s">"env"</span>: { <span class="tok-s">"SOLR_URL"</span>: <span class="tok-s">"http://localhost:8983/solr/"</span> }
+    }
+  }
+}</code></pre></div>
+    </div>
+
+    <!-- ── Cursor ── -->
+    <div data-client="cursor">
+      <h3>Cursor</h3>
+      <p>Create <code class="inline">.cursor/mcp.json</code> in your project root:</p>
+      <div class="codeblock" data-runtime="docker"><button class="copy" type="button">Copy</button><pre><code>{
+  <span class="tok-s">"mcpServers"</span>: {
+    <span class="tok-s">"solr-mcp"</span>: {
+      <span class="tok-s">"command"</span>: <span class="tok-s">"docker"</span>,
+      <span class="tok-s">"args"</span>: [<span class="tok-s">"run"</span>, <span class="tok-s">"-i"</span>, <span class="tok-s">"--rm"</span>,
+               <span class="tok-s">"--add-host=host.docker.internal:host-gateway"</span>,
+               <span class="tok-s">"-e"</span>, <span class="tok-s">"SOLR_URL=http://host.docker.internal:8983/solr/"</span>,
+               <span class="tok-s">"ghcr.io/adityamparikh/solr-mcp:coc2026"</span>]
+    }
+  }
+}</code></pre></div>
+      <div class="codeblock" data-runtime="jar"><button class="copy" type="button">Copy</button><pre><code>{
+  <span class="tok-s">"mcpServers"</span>: {
+    <span class="tok-s">"solr-mcp"</span>: {
+      <span class="tok-s">"command"</span>: <span class="tok-s">"java"</span>,
+      <span class="tok-s">"args"</span>: [<span class="tok-s">"-jar"</span>, <span class="tok-s">"/absolute/path/to/solr-mcp-1.0.0-SNAPSHOT.jar"</span>],
+      <span class="tok-s">"env"</span>: { <span class="tok-s">"SOLR_URL"</span>: <span class="tok-s">"http://localhost:8983/solr/"</span> }
+    }
+  }
+}</code></pre></div>
+    </div>
+
+    <!-- ── Zed ── -->
+    <div data-client="zed">
+      <h3>Zed</h3>
+      <p>
+        Open <code class="inline">zed: open settings</code> from the command palette and add a
+        <code class="inline">context_servers</code> entry:
+      </p>
+      <div class="codeblock" data-runtime="docker"><button class="copy" type="button">Copy</button><pre><code>{
+  <span class="tok-s">"context_servers"</span>: {
+    <span class="tok-s">"solr-mcp"</span>: {
+      <span class="tok-s">"source"</span>: <span class="tok-s">"custom"</span>,
+      <span class="tok-s">"command"</span>: <span class="tok-s">"docker"</span>,
+      <span class="tok-s">"args"</span>: [<span class="tok-s">"run"</span>, <span class="tok-s">"-i"</span>, <span class="tok-s">"--rm"</span>,
+               <span class="tok-s">"--add-host=host.docker.internal:host-gateway"</span>,
+               <span class="tok-s">"-e"</span>, <span class="tok-s">"SOLR_URL=http://host.docker.internal:8983/solr/"</span>,
+               <span class="tok-s">"ghcr.io/adityamparikh/solr-mcp:coc2026"</span>],
+      <span class="tok-s">"env"</span>: {}
+    }
+  }
+}</code></pre></div>
+      <div class="codeblock" data-runtime="jar"><button class="copy" type="button">Copy</button><pre><code>{
+  <span class="tok-s">"context_servers"</span>: {
+    <span class="tok-s">"solr-mcp"</span>: {
+      <span class="tok-s">"source"</span>: <span class="tok-s">"custom"</span>,
+      <span class="tok-s">"command"</span>: <span class="tok-s">"java"</span>,
+      <span class="tok-s">"args"</span>: [<span class="tok-s">"-jar"</span>, <span class="tok-s">"/absolute/path/to/solr-mcp-1.0.0-SNAPSHOT.jar"</span>],
+      <span class="tok-s">"env"</span>: { <span class="tok-s">"SOLR_URL"</span>: <span class="tok-s">"http://localhost:8983/solr/"</span> }
+    }
+  }
+}</code></pre></div>
+      <div class="note warn">
+        <span class="tag">Least-travelled path</span>
+        <p>
+          Zed is the one client with no guide in the repo, and its context-server schema has
+          moved around between releases. If this shape is rejected, check
+          <a href="https://zed.dev/docs/ai/mcp">zed.dev/docs/ai/mcp</a> — and please tell us,
+          so we can add a proper guide.
+        </p>
+      </div>
+    </div>
+
+    <!-- ── IntelliJ ── -->
+    <div data-client="intellij">
+      <h3>IntelliJ IDEA / JetBrains</h3>
+      <p>Needs the AI Assistant plugin. Either drop a file at
+        <code class="inline">.junie/mcp/mcp.json</code> in your project root:</p>
+      <div class="codeblock" data-runtime="docker"><button class="copy" type="button">Copy</button><pre><code>{
+  <span class="tok-s">"mcpServers"</span>: {
+    <span class="tok-s">"solr-mcp"</span>: {
+      <span class="tok-s">"command"</span>: <span class="tok-s">"docker"</span>,
+      <span class="tok-s">"args"</span>: [<span class="tok-s">"run"</span>, <span class="tok-s">"-i"</span>, <span class="tok-s">"--rm"</span>,
+               <span class="tok-s">"--add-host=host.docker.internal:host-gateway"</span>,
+               <span class="tok-s">"-e"</span>, <span class="tok-s">"SOLR_URL=http://host.docker.internal:8983/solr/"</span>,
+               <span class="tok-s">"ghcr.io/adityamparikh/solr-mcp:coc2026"</span>]
+    }
+  }
+}</code></pre></div>
+      <div class="codeblock" data-runtime="jar"><button class="copy" type="button">Copy</button><pre><code>{
+  <span class="tok-s">"mcpServers"</span>: {
+    <span class="tok-s">"solr-mcp"</span>: {
+      <span class="tok-s">"command"</span>: <span class="tok-s">"java"</span>,
+      <span class="tok-s">"args"</span>: [<span class="tok-s">"-jar"</span>, <span class="tok-s">"/absolute/path/to/solr-mcp-1.0.0-SNAPSHOT.jar"</span>],
+      <span class="tok-s">"env"</span>: { <span class="tok-s">"SOLR_URL"</span>: <span class="tok-s">"http://localhost:8983/solr/"</span> }
+    }
+  }
+}</code></pre></div>
+      <p style="font-size:.86rem;color:var(--ink-2)">
+        …or add it through <b>Settings → Tools → AI Assistant → MCP Servers → Add</b>,
+        transport <b>STDIO</b>.
+      </p>
+    </div>
+
+    <!-- ── Inspector ── -->
+    <div data-client="inspector">
+      <h3>MCP Inspector</h3>
+      <p>
+        No editor, no assistant — a browser UI that shows the raw protocol. The best way to
+        <em>see</em> what MCP actually is, and the fastest way to prove the server works.
+      </p>
+      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>npx @modelcontextprotocol/inspector</code></pre></div>
+      <p>Opens at <code class="inline">http://localhost:6274</code>. Choose <b>STDIO</b>, then:</p>
+      <div class="tablewrap">
+        <table>
+          <tbody>
+            <tr data-runtime="docker"><th>Command</th><td><code>docker</code></td></tr>
+            <tr data-runtime="docker"><th>Arguments</th><td><code>run -i --rm --add-host=host.docker.internal:host-gateway -e SOLR_URL=http://host.docker.internal:8983/solr/ ghcr.io/adityamparikh/solr-mcp:coc2026</code></td></tr>
+            <tr data-runtime="jar"><th>Command</th><td><code>java</code></td></tr>
+            <tr data-runtime="jar"><th>Arguments</th><td><code>-jar /absolute/path/to/solr-mcp-1.0.0-SNAPSHOT.jar</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Hit <b>Connect</b>, then <b>List Tools</b>. You should see eleven. Click
+        <code class="inline">list-collections</code> and run it — that round-trip is the whole
+        protocol in one click.
+      </p>
+    </div>
+
+    <h3>Confirm the connection</h3>
+    <p>Ask your assistant:</p>
+    <div class="prompts">
+      <div class="prompt">
+        <q>What Solr collections are available?<span class="why">calls <b>list-collections</b> — expect an empty list, which is correct right now</span></q>
+        <button class="copy-sm" type="button" data-copy="What Solr collections are available?">Copy</button>
+      </div>
+    </div>
+    <p style="font-size:.86rem;color:var(--ink-2)">
+      An empty list means everything works. If the assistant says it has no Solr tools, see
+      <a href="#broken">When it breaks</a>.
+    </p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     STEP 3
+     ══════════════════════════════════════════════════════════ -->
+<section class="step" id="s3" data-step="3">
+  <div class="step-num">3</div>
+  <div class="step-body">
+    <div class="step-head">
+      <div>
+        <p class="kicker">The lazy way, on purpose</p>
+        <h2>Index with no schema at all</h2>
+      </div>
+      <button class="done-toggle" type="button">Mark done</button>
+    </div>
+    <p>
+      Solr's <code class="inline">_default</code> configset is <b>schemaless</b>: throw JSON at
+      it and it invents field types for you. We're going to do exactly that, watch it work,
+      and then watch it bite. That contrast is the point of this whole exercise.
+    </p>
+
+    <div class="prompts">
+      <div class="prompt">
+        <q>Create a Solr collection called shows-auto.<span class="why">calls <b>create-collection</b></span></q>
+        <button class="copy-sm" type="button" data-copy="Create a Solr collection called shows-auto.">Copy</button>
+      </div>
+    </div>
+
+    <h3>Get the data in</h3>
+    <p>
+      Pick whichever suits your client. File-aware clients (Claude Code, Cursor, Copilot,
+      Zed, IntelliJ) can read a downloaded file; chat-only clients want a paste.
+    </p>
+
+    <details class="panel">
+      <summary>Option A — 61 shows from a file <span class="hint">Claude Code, Cursor, Copilot, Zed, IntelliJ</span></summary>
+      <div class="panel-body">
+        <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>curl -O https://raw.githubusercontent.com/apache/solr-mcp/main/src/test/resources/shows.json</code></pre></div>
+        <div class="prompts">
+          <div class="prompt">
+            <q>Index the contents of ./shows.json into the shows-auto collection.<span class="why">calls <b>index-json-documents</b> — expect 61 of 61</span></q>
+            <button class="copy-sm" type="button" data-copy="Index the contents of ./shows.json into the shows-auto collection.">Copy</button>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <details class="panel">
+      <summary>Option B — 12 shows, paste anywhere <span class="hint">Claude Desktop, or any chat-only client</span></summary>
+      <div class="panel-body">
+        <p style="font-size:.86rem">
+          Same shape, same lesson, small enough to paste into a chat box. Copy this whole block
+          and send it with the sentence at the top.
+        </p>
+        <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>Index this JSON into the shows-auto collection:
+
+[
+  {"id":"hbo-001","title":"Game of Thrones","platform":"HBO Max","genres":["Fantasy","Drama","Action"],"release_year":2011,"end_year":2019,"status":"Ended","seasons":8,"episodes":73,"creators":["David Benioff","D.B. Weiss"],"cast":["Emilia Clarke","Kit Harington","Peter Dinklage"],"country":"USA","language":"English","rating":"TV-MA","imdb_rating":9.2,"description":"Noble families vie for control of the Iron Throne while an ancient threat returns.","tags":["epic","fantasy","adaptation","politics"]},
+  {"id":"netflix-001","title":"Stranger Things","platform":"Netflix","genres":["Sci-Fi","Horror","Drama"],"release_year":2016,"end_year":2025,"status":"Ended","seasons":5,"episodes":42,"creators":["Matt Duffer","Ross Duffer"],"cast":["Millie Bobby Brown","Finn Wolfhard","Winona Ryder"],"country":"USA","language":"English","rating":"TV-14","imdb_rating":8.7,"description":"A group of kids in 1980s Indiana uncover supernatural mysteries and government conspiracies.","tags":["80s","supernatural","coming-of-age","monsters"]},
+  {"id":"hulu-001","title":"The Bear","platform":"Hulu","genres":["Drama","Comedy"],"release_year":2022,"end_year":0,"status":"Ongoing","seasons":3,"episodes":28,"creators":["Christopher Storer"],"cast":["Jeremy Allen White","Ayo Edebiri","Ebon Moss-Bachrach"],"country":"USA","language":"English","rating":"TV-MA","imdb_rating":8.6,"description":"A fine-dining chef returns to Chicago to run his late brother's sandwich shop.","tags":["food","family","anxiety"]},
+  {"id":"apple-001","title":"Ted Lasso","platform":"Apple TV+","genres":["Comedy","Drama","Sport"],"release_year":2020,"end_year":2023,"status":"Ended","seasons":3,"episodes":34,"creators":["Bill Lawrence","Jason Sudeikis"],"cast":["Jason Sudeikis","Hannah Waddingham","Brett Goldstein"],"country":"USA","language":"English","rating":"TV-MA","imdb_rating":8.8,"description":"An American football coach is hired to manage an English Premier League soccer team.","tags":["feel-good","sports","british"]},
+  {"id":"disney-001","title":"The Mandalorian","platform":"Disney+","genres":["Sci-Fi","Action","Adventure"],"release_year":2019,"end_year":0,"status":"Ongoing","seasons":3,"episodes":24,"creators":["Jon Favreau"],"cast":["Pedro Pascal","Carl Weathers","Giancarlo Esposito"],"country":"USA","language":"English","rating":"TV-14","imdb_rating":8.7,"description":"A lone bounty hunter guards a mysterious child across the outer reaches of the galaxy.","tags":["star-wars","space-western","adventure"]},
+  {"id":"hbo-002","title":"Succession","platform":"HBO Max","genres":["Drama","Comedy"],"release_year":2018,"end_year":2023,"status":"Ended","seasons":4,"episodes":39,"creators":["Jesse Armstrong"],"cast":["Brian Cox","Jeremy Strong","Sarah Snook"],"country":"USA","language":"English","rating":"TV-MA","imdb_rating":8.9,"description":"A media dynasty's children fight over control of the family empire.","tags":["satire","family","politics","business"]},
+  {"id":"prime-001","title":"The Boys","platform":"Amazon Prime Video","genres":["Action","Comedy","Sci-Fi"],"release_year":2019,"end_year":0,"status":"Ongoing","seasons":4,"episodes":32,"creators":["Eric Kripke"],"cast":["Karl Urban","Jack Quaid","Antony Starr"],"country":"USA","language":"English","rating":"TV-MA","imdb_rating":8.7,"description":"A group of vigilantes set out to take down corrupt superheroes.","tags":["superhero","satire","violent"]},
+  {"id":"netflix-002","title":"Dark","platform":"Netflix","genres":["Sci-Fi","Thriller","Drama"],"release_year":2017,"end_year":2020,"status":"Ended","seasons":3,"episodes":26,"creators":["Baran bo Odar","Jantje Friese"],"cast":["Louis Hofmann","Lisa Vicari","Oliver Masucci"],"country":"Germany","language":"German","rating":"TV-MA","imdb_rating":8.7,"description":"Four families search for a missing child and uncover a time-travel conspiracy.","tags":["time-travel","mystery","german"]},
+  {"id":"prime-002","title":"Fleabag","platform":"Amazon Prime Video","genres":["Comedy","Drama"],"release_year":2016,"end_year":2019,"status":"Ended","seasons":2,"episodes":12,"creators":["Phoebe Waller-Bridge"],"cast":["Phoebe Waller-Bridge","Sian Clifford","Andrew Scott"],"country":"UK","language":"English","rating":"TV-MA","imdb_rating":8.7,"description":"A sharp-tongued woman navigates grief and family in London.","tags":["british","dark-comedy","fourth-wall"]},
+  {"id":"apple-002","title":"Severance","platform":"Apple TV+","genres":["Sci-Fi","Thriller","Drama"],"release_year":2022,"end_year":0,"status":"Ongoing","seasons":2,"episodes":19,"creators":["Dan Erickson"],"cast":["Adam Scott","Britt Lower","Patricia Arquette"],"country":"USA","language":"English","rating":"TV-MA","imdb_rating":8.7,"description":"Office workers surgically divide their memories between work and personal life.","tags":["dystopian","workplace","mystery"]},
+  {"id":"hbo-003","title":"The Last of Us","platform":"HBO Max","genres":["Drama","Horror","Adventure"],"release_year":2023,"end_year":0,"status":"Ongoing","seasons":2,"episodes":16,"creators":["Craig Mazin","Neil Druckmann"],"cast":["Pedro Pascal","Bella Ramsey","Gabriel Luna"],"country":"USA","language":"English","rating":"TV-MA","imdb_rating":8.7,"description":"A smuggler escorts a teenage girl across a post-apocalyptic United States.","tags":["adaptation","post-apocalyptic","survival"]},
+  {"id":"hulu-002","title":"Only Murders in the Building","platform":"Hulu","genres":["Comedy","Mystery","Crime"],"release_year":2021,"end_year":0,"status":"Ongoing","seasons":4,"episodes":40,"creators":["Steve Martin","John Hoffman"],"cast":["Steve Martin","Martin Short","Selena Gomez"],"country":"USA","language":"English","rating":"TV-14","imdb_rating":8.1,"description":"Three true-crime obsessed neighbours investigate a death in their apartment building.","tags":["whodunnit","comedy","new-york"]}
+]</code></pre></div>
+      </div>
+    </details>
+
+    <div class="note good">
+      <span class="tag">What just happened</span>
+      <p>
+        No schema, no field definitions, no configuration — and every document landed. That is
+        genuinely useful, and it's why schemaless mode exists. Now let's find its edge.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     STEP 4
+     ══════════════════════════════════════════════════════════ -->
+<section class="step" id="s4" data-step="4">
+  <div class="step-num">4</div>
+  <div class="step-body">
+    <div class="step-head">
+      <div>
+        <p class="kicker">Where guessing runs out</p>
+        <h2>Hit the wall</h2>
+      </div>
+      <button class="done-toggle" type="button">Mark done</button>
+    </div>
+    <p>Ask the obvious business question:</p>
+
+    <div class="prompts">
+      <div class="prompt">
+        <q>Show me the breakdown of shows-auto by platform.<span class="why">calls <b>search</b> with a facet — this will not go well</span></q>
+        <button class="copy-sm" type="button" data-copy="Show me the breakdown of shows-auto by platform.">Copy</button>
+      </div>
+      <div class="prompt">
+        <q>Show me the schema for shows-auto.<span class="why">calls <b>get-schema</b> — here's the actual explanation</span></q>
+        <button class="copy-sm" type="button" data-copy="Show me the schema for shows-auto.">Copy</button>
+      </div>
+    </div>
+
+    <h3>What Solr guessed</h3>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Field</th><th>Guessed type</th><th>Consequence</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>platform</code></td><td><code>text_general</code></td><td>Tokenized, so <code>platform:prime</code> now matches "Amazon Prime Video" — nonsense for a category. Faceting it returns <b>nothing at all</b>, not even wrong buckets.</td></tr>
+          <tr><td><code>title</code></td><td><code>text_general</code></td><td>Searchable, but not sortable or exact-matchable.</td></tr>
+          <tr><td><code>imdb_rating</code></td><td><code>pdouble<b>s</b></code></td><td>Plural — <em>multi-valued</em>. Every rating is now a list.</td></tr>
+          <tr><td><code>release_year</code></td><td><code>plong<b>s</b></code></td><td>Multi-valued too. Range filters get awkward.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      Look at any returned document and you'll see it: every single field came back wrapped in
+      an array — <code class="inline">"title":["Stranger Things"]</code>. Solr had one sample of
+      each field and no reason to assume it wouldn't repeat, so it hedged.
+    </p>
+
+    <div class="note bug">
+      <span class="tag">You'll see one of two things here</span>
+      <p>
+        Either an empty breakdown — <code class="inline">"facets": { "platform": {} }</code> —
+        or a <code class="inline">ClassCastException: ArrayList cannot be cast to NamedList</code>.
+        Which one depends on whether your image predates
+        <a href="https://github.com/apache/solr-mcp/pull/175">apache/solr-mcp#175</a>. Both make
+        the same point, and neither is your fault.
+      </p>
+      <p>
+        The exception is worth understanding because it isn't about this field type: the trigger
+        is <b>any facet that comes back with zero buckets</b>. Solr serializes an empty facet as
+        <code class="inline">[]</code>, and the response parser hands that to SolrJ as a plain
+        list where a <code class="inline">NamedList</code> is expected — so an ordinary search on
+        a well-typed field whose filter matches nothing hits it too. #175 fixes that by deciding
+        from the response path rather than the array's shape.
+      </p>
+      <p>
+        Either way, the lesson is the one below: <code class="inline">text_general</code> yields
+        no facet buckets at all. Step 5 gives <code class="inline">platform</code> real buckets,
+        and the question starts answering itself.
+      </p>
+    </div>
+
+    <p>
+      <b>The lesson:</b> schemaless is a fast on-ramp, not a destination. Solr guessed from a
+      single document with no idea what you'd want to ask later. Facets, ranges and sorting all
+      need types chosen deliberately.
+    </p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     STEP 5
+     ══════════════════════════════════════════════════════════ -->
+<section class="step" id="s5" data-step="5">
+  <div class="step-num">5</div>
+  <div class="step-body">
+    <div class="step-head">
+      <div>
+        <p class="kicker">Types chosen on purpose</p>
+        <h2>Build a real schema</h2>
+      </div>
+      <button class="done-toggle" type="button">Mark done</button>
+    </div>
+
+    <div class="note warn">
+      <span class="tag">Reset first — this is not optional</span>
+      <p>
+        Solr field types <b>cannot be changed once created</b>, and every collection here shares
+        the same <code class="inline">_default</code> configset. The guesses from step 3 are
+        already baked in, so a new collection would inherit them. Wipe the slate:
+      </p>
+    </div>
+
+    <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>docker rm -f solr-mcp-demo
+docker run -d --name solr-mcp-demo -p 8983:8983 solr:9-slim solr start -c -f</code></pre></div>
+    <p style="font-size:.86rem;color:var(--ink-2)">
+      Takes about seven seconds. Wait for the collections endpoint to answer before continuing.
+    </p>
+
+    <h3>Create the collection and define fields <em>before</em> indexing</h3>
+    <div class="prompts">
+      <div class="prompt">
+        <q>Create a Solr collection called shows.<span class="why">calls <b>create-collection</b></span></q>
+        <button class="copy-sm" type="button" data-copy="Create a Solr collection called shows.">Copy</button>
+      </div>
+    </div>
+
+    <p>Then paste this. Order matters — fields first, documents second:</p>
+    <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>Add these fields to the shows collection schema:
+
+- title         text_general  single-valued   (full-text search)
+- description   text_general  single-valued   (full-text search)
+- platform      string        single-valued   docValues  (faceting)
+- status        string        single-valued   docValues
+- country       string        single-valued   docValues
+- language      string        single-valued   docValues
+- rating        string        single-valued   docValues
+- genres        string        multi-valued    docValues  (faceting)
+- tags          string        multi-valued    docValues
+- cast          string        multi-valued    docValues
+- creators      string        multi-valued    docValues
+- release_year  pint          single-valued   docValues  (range filters)
+- end_year      pint          single-valued   docValues
+- seasons       pint          single-valued   docValues
+- episodes      pint          single-valued   docValues
+- imdb_rating   pdouble       single-valued   docValues  (sorting)</code></pre></div>
+
+    <p>
+      Now index the same data into <code class="inline">shows</code> — same file or same paste
+      as step 3, just the new collection name.
+    </p>
+
+    <h3>Why these types</h3>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Choice</th><th>Buys you</th></tr></thead>
+        <tbody>
+          <tr><td><code>string</code> not <code>text_general</code></td><td>Exact values. "Amazon Prime Video" stays one facet bucket instead of three tokens.</td></tr>
+          <tr><td><code>docValues: true</code></td><td>The column-oriented structure that makes faceting and sorting fast.</td></tr>
+          <tr><td><code>pint</code> / <code>pdouble</code></td><td>Real numbers — range filters like <code>[2020 TO *]</code> and numeric sort.</td></tr>
+          <tr><td>single-valued where true</td><td>You can sort on it. Multi-valued fields make "highest rated" meaningless.</td></tr>
+          <tr><td><code>text_general</code> kept for prose</td><td>Analysis and tokenizing is exactly what you want in <code>title</code> and <code>description</code>.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>Ask the same question that failed in step 4:</p>
+    <div class="prompts">
+      <div class="prompt">
+        <q>Show me the breakdown of shows by platform.<span class="why">now returns clean buckets — Netflix 20, Amazon Prime Video 20, HBO Max 7…</span></q>
+        <button class="copy-sm" type="button" data-copy="Show me the breakdown of shows by platform.">Copy</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     STEP 6
+     ══════════════════════════════════════════════════════════ -->
+<section class="step" id="s6" data-step="6">
+  <div class="step-num">6</div>
+  <div class="step-body">
+    <div class="step-head">
+      <div>
+        <p class="kicker">Eight questions, eight Solr features</p>
+        <h2>Actually search</h2>
+      </div>
+      <button class="done-toggle" type="button">Mark done</button>
+    </div>
+    <p>
+      Every prompt below is plain English. The note under each one names the Solr parameter it
+      exercises, and the result you should get from the full 61-show set.
+    </p>
+
+    <div class="prompts">
+      <div class="prompt">
+        <q>Which shows have "dragon" in the title?<span class="why"><b>q</b> · full-text on an analyzed field → 1 hit, House of the Dragon</span></q>
+        <button class="copy-sm" type="button" data-copy="Which shows have &quot;dragon&quot; in the title?">Copy</button>
+      </div>
+      <div class="prompt">
+        <q>Find shows whose description contains the exact phrase "a group of".<span class="why"><b>q</b> · phrase query → 2 hits, The Boys and Stranger Things</span></q>
+        <button class="copy-sm" type="button" data-copy="Find shows whose description contains the exact phrase &quot;a group of&quot;.">Copy</button>
+      </div>
+      <div class="prompt">
+        <q>Show me everything on Netflix.<span class="why"><b>fq</b> · exact string filter → 20 hits</span></q>
+        <button class="copy-sm" type="button" data-copy="Show me everything on Netflix.">Copy</button>
+      </div>
+      <div class="prompt">
+        <q>Which shows were released in 2020 or later?<span class="why"><b>fq</b> · numeric range <code>release_year:[2020 TO *]</code> → 31 hits</span></q>
+        <button class="copy-sm" type="button" data-copy="Which shows were released in 2020 or later?">Copy</button>
+      </div>
+      <div class="prompt">
+        <q>Find all the comedies.<span class="why"><b>fq</b> · membership in a multi-valued field → 15 hits</span></q>
+        <button class="copy-sm" type="button" data-copy="Find all the comedies.">Copy</button>
+      </div>
+      <div class="prompt">
+        <q>Break the collection down by genre and by status.<span class="why"><b>facet</b> · two fields at once → Ended 33, Ongoing 28</span></q>
+        <button class="copy-sm" type="button" data-copy="Break the collection down by genre and by status.">Copy</button>
+      </div>
+      <div class="prompt">
+        <q>What are the five highest rated shows?<span class="why"><b>sort</b> + <b>rows</b> → Game of Thrones 9.2, Succession 8.9, True Detective 8.9…</span></q>
+        <button class="copy-sm" type="button" data-copy="What are the five highest rated shows?">Copy</button>
+      </div>
+      <div class="prompt">
+        <q>Show me shows from 2015 onward rated 8 or above, sorted by rating, with a platform breakdown.<span class="why">everything at once — <b>fq</b> × 2, <b>sort</b>, <b>facet</b>, <b>rows</b> → 39 hits</span></q>
+        <button class="copy-sm" type="button" data-copy="Show me shows from 2015 onward rated 8 or above, sorted by rating, with a platform breakdown.">Copy</button>
+      </div>
+      <div class="prompt">
+        <q>Which shows star Pedro Pascal?<span class="why"><b>fq</b> · exact match inside a multi-valued field → 3 hits</span></q>
+        <button class="copy-sm" type="button" data-copy="Which shows star Pedro Pascal?">Copy</button>
+      </div>
+    </div>
+
+    <div class="note good">
+      <span class="tag">Worth noticing</span>
+      <p>
+        You never wrote <code class="inline">fq=release_year:[2020 TO *]&amp;facet.field=platform</code>.
+        The assistant did — because the tool descriptions told it how. That translation layer is
+        the entire product.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     STEP 7
+     ══════════════════════════════════════════════════════════ -->
+<section class="step" id="s7" data-step="7">
+  <div class="step-num">7</div>
+  <div class="step-body">
+    <div class="step-head">
+      <div>
+        <p class="kicker">Beyond search</p>
+        <h2>Ask about the index itself</h2>
+      </div>
+      <button class="done-toggle" type="button">Mark done</button>
+    </div>
+    <p>
+      Search is the headline, but the operational tools are where this earns its place in a
+      real workflow.
+    </p>
+
+    <div class="prompts">
+      <div class="prompt">
+        <q>Is the shows collection healthy?<span class="why"><b>check-health</b> — ping, response time, doc count</span></q>
+        <button class="copy-sm" type="button" data-copy="Is the shows collection healthy?">Copy</button>
+      </div>
+      <div class="prompt">
+        <q>Give me the stats for the shows collection.<span class="why"><b>get-collection-stats</b> — segments, cache hit ratios, handler timings</span></q>
+        <button class="copy-sm" type="button" data-copy="Give me the stats for the shows collection.">Copy</button>
+      </div>
+      <div class="prompt">
+        <q>What's my query result cache hit ratio, and what does that tell me?<span class="why">the interesting one — real metrics, interpreted</span></q>
+        <button class="copy-sm" type="button" data-copy="What's my query result cache hit ratio, and what does that tell me?">Copy</button>
+      </div>
+      <div class="prompt">
+        <q>Explain the shows schema — which fields can I facet on, and which can I sort by?<span class="why"><b>get-schema</b> — and a genuinely useful answer</span></q>
+        <button class="copy-sm" type="button" data-copy="Explain the shows schema — which fields can I facet on, and which can I sort by?">Copy</button>
+      </div>
+    </div>
+
+    <h3>The full toolbox</h3>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Tool</th><th>Does</th></tr></thead>
+        <tbody>
+          <tr><td><code>search</code></td><td>Query, filter, facet, sort, paginate</td></tr>
+          <tr><td><code>index-json-documents</code></td><td>Index from a JSON string</td></tr>
+          <tr><td><code>index-csv-documents</code></td><td>Index from CSV</td></tr>
+          <tr><td><code>index-xml-documents</code></td><td>Index from XML</td></tr>
+          <tr><td><code>create-collection</code></td><td>New collection, optional configset / shards / replicas</td></tr>
+          <tr><td><code>list-collections</code></td><td>Everything in the cluster</td></tr>
+          <tr><td><code>get-collection-stats</code></td><td>Index, query, cache and handler metrics</td></tr>
+          <tr><td><code>check-health</code></td><td>Ping and document count</td></tr>
+          <tr><td><code>get-schema</code></td><td>Fields, types, dynamic fields, copy fields</td></tr>
+          <tr><td><code>add-fields</code></td><td>Add fields — additive only</td></tr>
+          <tr><td><code>add-field-types</code></td><td>Custom analyzers, <code>DenseVectorField</code> for vector search</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="font-size:.86rem;color:var(--ink-2)">
+      Plus 2 resources (<code class="inline">solr://collections</code>,
+      <code class="inline">solr://{collection}/schema</code>) and 6 guided prompts your client
+      may surface as slash commands.
+    </p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     GOING FURTHER
+     ══════════════════════════════════════════════════════════ -->
+<section id="more" style="padding-top:1rem">
+  <h2 style="font-family:var(--f-display);font-weight:400;font-size:1.9rem;margin:0 0 .3rem">Going further</h2>
+  <p style="color:var(--ink-2);margin-bottom:1.5rem">
+    Everything below is optional. Open what's relevant to you.
+  </p>
+
+  <details class="panel" id="build-local">
+    <summary>Build it yourself <span class="hint">no image, no download</span></summary>
+    <div class="panel-body">
+      <p>Needs Git, JDK 25 and about three minutes.</p>
+      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>git clone https://github.com/apache/solr-mcp.git
+cd solr-mcp
+./gradlew build</code></pre></div>
+      <p>
+        Produces <code class="inline">build/libs/solr-mcp-1.0.0-SNAPSHOT.jar</code>. Use that
+        absolute path anywhere this card says <em>JAR</em>.
+      </p>
+      <h3>…and as a local Docker image</h3>
+      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>./gradlew jibDockerBuild</code></pre></div>
+      <p>
+        Produces <code class="inline">solr-mcp:latest</code> locally. Substitute that for the
+        <code class="inline">ghcr.io/…</code> reference in any config above.
+      </p>
+      <h3>Native binaries (fast startup, small image)</h3>
+      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code><span class="tok-c"># requires GraalVM JDK 25</span>
+./gradlew bootBuildImage -Pnative                    <span class="tok-c"># solr-mcp:latest-native-stdio</span>
+./gradlew bootBuildImage -Pnative -Pprofile=http     <span class="tok-c"># solr-mcp:latest-native-http</span></code></pre></div>
+      <p style="font-size:.86rem;color:var(--ink-2)">
+        Native images are pinned to one transport at build time — Spring AOT bakes the
+        web-application type into the binary — so there's one image per profile.
+      </p>
+    </div>
+  </details>
+
+  <details class="panel">
+    <summary>HTTP transport <span class="hint">remote access, multiple clients, one server</span></summary>
+    <div class="panel-body">
+      <p>
+        Everything so far used STDIO, where your client launches the server as a subprocess.
+        HTTP mode runs one server that many clients connect to over
+        <code class="inline">http://localhost:8080/mcp</code>.
+      </p>
+      <h3>Start it</h3>
+      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code><span class="tok-c"># Docker</span>
+docker run -p 8080:8080 --rm \
+  --add-host=host.docker.internal:host-gateway \
+  -e PROFILES=http \
+  -e SOLR_URL=http://host.docker.internal:8983/solr/ \
+  ghcr.io/adityamparikh/solr-mcp:coc2026
+
+<span class="tok-c"># JAR</span>
+PROFILES=http SOLR_URL=http://localhost:8983/solr/ \
+  java -jar /absolute/path/to/solr-mcp-1.0.0-SNAPSHOT.jar</code></pre></div>
+
+      <div class="note warn">
+        <span class="tag">Secured by default</span>
+        <p>
+          HTTP mode requires OAuth2 out of the box. The toggle is
+          <code class="inline">HTTP_SECURITY_ENABLED</code> (default <b>true</b>) and the issuer
+          is <code class="inline">OAUTH2_ISSUER_URI</code>. For a local experiment only, you can
+          set <code class="inline">HTTP_SECURITY_ENABLED=false</code> — never do that on anything
+          reachable by others.
+        </p>
+      </div>
+
+      <p>Point any client at the URL instead of a command:</p>
+      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>{
+  <span class="tok-s">"mcpServers"</span>: {
+    <span class="tok-s">"solr-mcp"</span>: { <span class="tok-s">"url"</span>: <span class="tok-s">"http://localhost:8080/mcp"</span> }
+  }
+}</code></pre></div>
+      <p style="font-size:.86rem;color:var(--ink-2)">
+        Claude Code: <code class="inline">claude mcp add --transport http solr-mcp http://localhost:8080/mcp</code>
+      </p>
+    </div>
+  </details>
+
+  <details class="panel">
+    <summary>Security setup — OAuth2 with Auth0 or Keycloak <span class="hint">full walkthroughs</span></summary>
+    <div class="panel-body">
+      <p>
+        These are complete, maintained guides in the repo — the right place to send anyone who
+        wants to deploy this for a team rather than a laptop.
+      </p>
+      <div class="linkrow">
+        <a href="https://github.com/apache/solr-mcp/blob/main/docs/security/deployment-model.md">Deployment model (single-tenant)</a>
+        <a href="https://github.com/apache/solr-mcp/blob/main/docs/security/http.md">HTTP security model</a>
+        <a href="https://github.com/apache/solr-mcp/blob/main/docs/security/stdio.md">STDIO security model</a>
+        <a href="https://github.com/apache/solr-mcp/blob/main/docs/security/auth0.md">OAuth2 with Auth0</a>
+        <a href="https://github.com/apache/solr-mcp/blob/main/docs/security/keycloak.md">OAuth2 with Keycloak</a>
+      </div>
+      <p style="font-size:.86rem;color:var(--ink-2)">
+        Short version: the server is a resource server. Your identity provider issues tokens,
+        the server validates them against <code class="inline">OAUTH2_ISSUER_URI</code>, and
+        MCP clients handle the authorization flow themselves.
+      </p>
+    </div>
+  </details>
+
+  <details class="panel" id="broken">
+    <summary>When it breaks <span class="hint">the five things that actually go wrong</span></summary>
+    <div class="panel-body">
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>Client says the server failed to start, no detail</td>
+              <td>Almost always <b>Java version</b>. Run <code>java -version</code> — the JAR needs 25. STDIO swallows the error. Switch to the Docker path if you'd rather not install a JDK.</td>
+            </tr>
+            <tr>
+              <td>Connects, but every Solr call fails</td>
+              <td><code>SOLR_URL</code> is wrong for the context. From <b>inside</b> a container use <code>host.docker.internal</code>; from a plain JAR use <code>localhost</code>. The <code>--add-host</code> flag in every Docker command here is what makes that name resolve on Linux — it needs Docker 20.10+.</td>
+            </tr>
+            <tr>
+              <td><code>Solr instance is not running in SolrCloud mode</code></td>
+              <td>The container was started without <code>-c</code>. Collections need SolrCloud. Re-run the step 1 command exactly.</td>
+            </tr>
+            <tr>
+              <td>New collection already has fields you didn't add</td>
+              <td>Every collection shares the <code>_default</code> configset, so the first collection's field types leak into later ones — and types can't be changed once set. Restart the container to reset (step 5). Filed as <a href="https://github.com/apache/solr-mcp/issues/183">#183</a>.</td>
+            </tr>
+            <tr>
+              <td>Results ignore your sort</td>
+              <td>The <code>search</code> tool takes <code>sortClauses</code> as objects shaped <code>{"item":"imdb_rating","order":"desc"}</code>. Unknown parameters are silently dropped rather than rejected, so a wrong key looks like it worked. Ask the assistant to retry and name the field explicitly.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <h3>Start completely over</h3>
+      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>docker rm -f solr-mcp-demo
+docker run -d --name solr-mcp-demo -p 8983:8983 solr:9-slim solr start -c -f</code></pre></div>
+    </div>
+  </details>
+
+  <details class="panel">
+    <summary>Take it home <span class="hint">contribute, or just keep poking</span></summary>
+    <div class="panel-body">
+      <div class="linkrow">
+        <a href="https://github.com/apache/solr-mcp">Repository</a>
+        <a href="https://github.com/apache/solr-mcp/issues">Issues</a>
+        <a href="https://github.com/apache/solr-mcp/discussions">Discussions</a>
+        <a href="https://github.com/apache/solr-mcp/blob/main/CONTRIBUTING.md">Contributing</a>
+        <a href="https://the-asf.slack.com/archives/C09TVG3BM1P">#solr-mcp on ASF Slack</a>
+      </div>
+      <p>
+        Good first issues tend to be client guides, tool descriptions and error messages —
+        all of which directly affect how well an assistant uses the server. If something on
+        this card confused you, that's a bug worth filing.
+      </p>
+      <h3>Ideas worth trying while you're here</h3>
+      <ul style="max-width:var(--measure);color:var(--ink-2);padding-left:1.1rem">
+        <li>Index your own JSON, CSV or XML and see what the schema guesser makes of it.</li>
+        <li>Add a <code class="inline">DenseVectorField</code> with <code class="inline">add-field-types</code> and try vector search.</li>
+        <li>Ask the assistant to design a schema for a dataset you describe in words.</li>
+        <li>Point it at a Solr you already run — <code class="inline">SOLR_URL</code> is all it takes.</li>
+      </ul>
+    </div>
+  </details>
+</section>
+
+<footer class="footer">
+  <p>
+    <b>Apache Solr MCP Server</b> — incubating, Apache License 2.0. Solr, Apache and the feather
+    logo are trademarks of the Apache Software Foundation. This card was prepared for a
+    Community over Code 2026 hackathon session; the container image it references is a personal
+    pre-release build, not an Apache release.
+  </p>
+  <p>Verified against Solr 9 (SolrCloud), Spring Boot 3.5.14, solr-mcp 1.0.0-SNAPSHOT.</p>
+</footer>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var STATE_KEY = "solrmcp-coc2026-state";
+  var DONE_KEY = "solrmcp-coc2026-done";
+
+  var state = { os: "macos", runtime: "docker", client: "claude-code" };
+  try {
+    var saved = JSON.parse(localStorage.getItem(STATE_KEY) || "{}");
+    ["os", "runtime", "client"].forEach(function (k) {
+      if (saved[k]) state[k] = saved[k];
+    });
+  } catch (e) { /* first visit, or storage blocked */ }
+
+  /* ---- show/hide blocks matching the current selection ---- */
+  function matches(el, attr, value) {
+    var spec = el.getAttribute(attr);
+    if (spec === null) return true;
+    return spec.split(/\s+/).indexOf(value) !== -1;
+  }
+
+  function apply() {
+    document.querySelectorAll("[data-os],[data-runtime],[data-client]").forEach(function (el) {
+      var ok = matches(el, "data-os", state.os)
+            && matches(el, "data-runtime", state.runtime)
+            && matches(el, "data-client", state.client);
+      el.hidden = !ok;
+    });
+    document.querySelectorAll(".seg").forEach(function (seg) {
+      var group = seg.getAttribute("data-group");
+      seg.querySelectorAll("button").forEach(function (b) {
+        b.setAttribute("aria-pressed", String(b.getAttribute("data-val") === state[group]));
+      });
+    });
+    try { localStorage.setItem(STATE_KEY, JSON.stringify(state)); } catch (e) {}
+  }
+
+  document.querySelectorAll(".seg").forEach(function (seg) {
+    var group = seg.getAttribute("data-group");
+    seg.addEventListener("click", function (ev) {
+      var btn = ev.target.closest("button[data-val]");
+      if (!btn) return;
+      state[group] = btn.getAttribute("data-val");
+      apply();
+    });
+  });
+
+  /* ---- copy buttons ---- */
+  function flash(btn, label) {
+    var original = btn.textContent;
+    btn.textContent = label;
+    btn.setAttribute("data-copied", "1");
+    setTimeout(function () {
+      btn.textContent = original;
+      btn.removeAttribute("data-copied");
+    }, 1400);
+  }
+
+  function writeClipboard(text, btn) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(
+        function () { flash(btn, "Copied"); },
+        function () { flash(btn, "Press ⌘C"); }
+      );
+      return;
+    }
+    var ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); flash(btn, "Copied"); }
+    catch (e) { flash(btn, "Press ⌘C"); }
+    document.body.removeChild(ta);
+  }
+
+  document.querySelectorAll(".codeblock .copy").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var pre = btn.parentElement.querySelector("pre");
+      writeClipboard(pre.innerText, btn);
+    });
+  });
+
+  document.querySelectorAll(".copy-sm[data-copy]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      writeClipboard(btn.getAttribute("data-copy"), btn);
+    });
+  });
+
+  /* ---- step check-off, so people can leave and come back ---- */
+  var done = {};
+  try { done = JSON.parse(localStorage.getItem(DONE_KEY) || "{}"); } catch (e) {}
+
+  document.querySelectorAll(".step").forEach(function (step) {
+    var id = step.getAttribute("data-step");
+    var btn = step.querySelector(".done-toggle");
+    if (!btn) return;
+
+    function render() {
+      var isDone = !!done[id];
+      step.setAttribute("data-done", isDone ? "1" : "0");
+      btn.textContent = isDone ? "Done ✓" : "Mark done";
+      btn.setAttribute("aria-pressed", String(isDone));
+    }
+
+    btn.addEventListener("click", function () {
+      done[id] = !done[id];
+      try { localStorage.setItem(DONE_KEY, JSON.stringify(done)); } catch (e) {}
+      render();
+    });
+
+    render();
+  });
+
+  apply();
+})();
+</script>
