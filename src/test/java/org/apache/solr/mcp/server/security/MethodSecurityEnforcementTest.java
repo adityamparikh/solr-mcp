@@ -22,7 +22,6 @@ import org.apache.solr.mcp.server.TestcontainersConfiguration;
 import org.apache.solr.mcp.server.collection.CollectionService;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.DisabledInNativeImage;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
@@ -53,7 +52,6 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @ActiveProfiles("http")
 @Tag("integration")
 @Testcontainers(disabledWithoutDocker = true)
-@DisabledInNativeImage
 class MethodSecurityEnforcementTest {
 
 	@Autowired

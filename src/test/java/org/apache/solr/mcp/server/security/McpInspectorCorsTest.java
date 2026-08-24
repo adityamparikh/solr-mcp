@@ -26,7 +26,6 @@ import java.net.http.HttpResponse;
 import org.apache.solr.mcp.server.TestcontainersConfiguration;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.DisabledInNativeImage;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Import;
@@ -58,7 +57,6 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @ActiveProfiles("http")
 @Tag("integration")
 @Testcontainers(disabledWithoutDocker = true)
-@DisabledInNativeImage
 class McpInspectorCorsTest {
 
 	/** The MCP Inspector UI origin, and the shipped default allowlist entry. */
