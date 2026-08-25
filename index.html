@@ -563,7 +563,14 @@ sdk install java 25-tem</code></pre></div>
 
     <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>docker run -d --name solr-mcp-demo -p 8983:8983 solr:9-slim solr start -c -f</code></pre></div>
 
-    <p>Confirm it's up — this should return an empty collection list:</p>
+    <p data-runtime="docker">
+      While that boots, pull the server image too. It is ~155 MB, and several clients time out
+      a first connection at 60 seconds — long enough to look like a broken config when it is
+      really just a download:
+    </p>
+    <div class="codeblock" data-runtime="docker"><button class="copy" type="button">Copy</button><pre><code>docker pull ghcr.io/adityamparikh/solr-mcp:coc2026</code></pre></div>
+
+    <p>Confirm Solr is up — this should return an empty collection list:</p>
     <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>curl "http://localhost:8983/solr/admin/collections?action=LIST"</code></pre></div>
 
     <p>
@@ -745,8 +752,47 @@ sdk install java 25-tem</code></pre></div>
     <div data-client="zed">
       <h3>Zed</h3>
       <p>
-        Open <code class="inline">zed: open settings</code> from the command palette and add a
-        <code class="inline">context_servers</code> entry:
+        Zed has a form for this, which is the easier route here — no JSON, and it validates as
+        you type. <b>Settings → AI → General → MCP Servers → Add Server → Add Local MCP
+        Server</b>, then:
+      </p>
+      <div class="tablewrap" data-runtime="docker">
+        <table>
+          <tbody>
+            <tr><th>Server Name</th><td><code>solr-mcp</code></td></tr>
+            <tr><th>Command</th><td><code>docker</code></td></tr>
+            <tr><th>Arguments</th><td><code>run -i --rm --add-host=host.docker.internal:host-gateway -e SOLR_URL=http://host.docker.internal:8983/solr/ ghcr.io/adityamparikh/solr-mcp:coc2026</code></td></tr>
+            <tr><th>Timeout</th><td>60 is fine <em>once the image is pulled</em> — see below</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="tablewrap" data-runtime="jar">
+        <table>
+          <tbody>
+            <tr><th>Server Name</th><td><code>solr-mcp</code></td></tr>
+            <tr><th>Command</th><td><code>java</code></td></tr>
+            <tr><th>Arguments</th><td><code>-jar /absolute/path/to/solr-mcp-1.0.0-SNAPSHOT.jar</code></td></tr>
+            <tr><th>Environment Variables</th><td><code>SOLR_URL</code> = <code>http://localhost:8983/solr/</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p style="font-size:.86rem;color:var(--ink-2)">
+        Arguments go in <b>one field, space-separated</b> — not as a JSON array. The form writes
+        the same settings entry you'd hand-edit below.
+      </p>
+      <div class="note warn" data-runtime="docker">
+        <span class="tag">Pull the image first</span>
+        <p>
+          Zed's default timeout is <b>60 seconds</b>, and a first run has to fetch ~155 MB. On
+          venue wifi that can outrun the timeout, and the failure looks like a broken config
+          rather than a slow download. Run
+          <code class="inline">docker pull ghcr.io/adityamparikh/solr-mcp:coc2026</code> once
+          beforehand and the problem disappears.
+        </p>
+      </div>
+      <p>
+        Prefer JSON? <code class="inline">zed: open settings</code> from the command palette,
+        and add a <code class="inline">context_servers</code> entry:
       </p>
       <div class="codeblock" data-runtime="docker"><button class="copy" type="button">Copy</button><pre><code>{
   <span class="tok-s">"context_servers"</span>: {
