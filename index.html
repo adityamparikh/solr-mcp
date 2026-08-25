@@ -751,7 +751,6 @@ sdk install java 25-tem</code></pre></div>
       <div class="codeblock" data-runtime="docker"><button class="copy" type="button">Copy</button><pre><code>{
   <span class="tok-s">"context_servers"</span>: {
     <span class="tok-s">"solr-mcp"</span>: {
-      <span class="tok-s">"source"</span>: <span class="tok-s">"custom"</span>,
       <span class="tok-s">"command"</span>: <span class="tok-s">"docker"</span>,
       <span class="tok-s">"args"</span>: [<span class="tok-s">"run"</span>, <span class="tok-s">"-i"</span>, <span class="tok-s">"--rm"</span>,
                <span class="tok-s">"--add-host=host.docker.internal:host-gateway"</span>,
@@ -764,20 +763,21 @@ sdk install java 25-tem</code></pre></div>
       <div class="codeblock" data-runtime="jar"><button class="copy" type="button">Copy</button><pre><code>{
   <span class="tok-s">"context_servers"</span>: {
     <span class="tok-s">"solr-mcp"</span>: {
-      <span class="tok-s">"source"</span>: <span class="tok-s">"custom"</span>,
       <span class="tok-s">"command"</span>: <span class="tok-s">"java"</span>,
       <span class="tok-s">"args"</span>: [<span class="tok-s">"-jar"</span>, <span class="tok-s">"/absolute/path/to/solr-mcp-1.0.0-SNAPSHOT.jar"</span>],
       <span class="tok-s">"env"</span>: { <span class="tok-s">"SOLR_URL"</span>: <span class="tok-s">"http://localhost:8983/solr/"</span> }
     }
   }
 }</code></pre></div>
-      <div class="note warn">
-        <span class="tag">Least-travelled path</span>
+      <div class="note good">
+        <span class="tag">Zed schema — verified 1.16.2</span>
         <p>
-          Zed is the one client with no guide in the repo, and its context-server schema has
-          moved around between releases. If this shape is rejected, check
-          <a href="https://zed.dev/docs/ai/mcp">zed.dev/docs/ai/mcp</a> — and please tell us,
-          so we can add a proper guide.
+          Verified against Zed <b>1.16.2</b>. Zed's schema takes <code class="inline">command</code>
+          as a plain string with <code class="inline">args</code> and
+          <code class="inline">env</code> alongside it — there is no
+          <code class="inline">source</code> key, and adding one makes Zed's settings
+          validator reject the entry. If a future release moves this again, check
+          <a href="https://zed.dev/docs/ai/mcp">zed.dev/docs/ai/mcp</a>.
         </p>
       </div>
     </div>
