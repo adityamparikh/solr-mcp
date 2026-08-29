@@ -528,6 +528,16 @@ details.panel > summary .hint {
         </p>
       </div>
 
+      <h3>Get the JAR</h3>
+      <p>
+        Prebuilt, so you don't need Git or Gradle — 53 MB:
+      </p>
+      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>curl -LO https://github.com/adityamparikh/solr-mcp/releases/download/coc2026/solr-mcp-1.0.0-SNAPSHOT.jar</code></pre></div>
+      <p style="font-size:.86rem;color:var(--ink-2)">
+        Built from the same commit as the container image, so both paths behave identically.
+        Unofficial pre-release build — not an Apache release.
+      </p>
+
       <h3>Install Java 25</h3>
       <div class="codeblock" data-os="macos"><button class="copy" type="button">Copy</button><pre><code><span class="tok-c"># SDKMAN (recommended — no sudo, easy to switch back)</span>
 sdk install java 25-tem
