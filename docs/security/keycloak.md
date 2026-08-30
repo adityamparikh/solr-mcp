@@ -11,6 +11,7 @@ This guide covers setting up [Keycloak](https://www.keycloak.org/) as an OAuth2/
   - [Running Keycloak](#running-keycloak)
   - [Creating a Realm](#creating-a-realm)
   - [Creating Clients](#creating-clients)
+    - [Audience mapper (required)](#audience-mapper-required)
   - [Creating Test Users](#creating-test-users)
 - [Spring Boot Configuration](#spring-boot-configuration)
 - [Running the Server](#running-the-server)
@@ -59,24 +60,91 @@ User                    MCP Client            Keycloak              Solr MCP Ser
 
 ## Quick Start
 
+Every command below is runnable as-is. Step 2 is **not optional**: the MCP server
+resolves the issuer's OpenID configuration eagerly while the Spring context is built,
+so if the realm does not exist yet, step 3 aborts startup rather than failing later on
+a request.
+
 ```bash
-# 1. Start Keycloak
+# 1. Start Keycloak and wait for it to accept connections
 docker run -d --name keycloak \
   -p 8180:8080 \
   -e KC_BOOTSTRAP_ADMIN_USERNAME=admin \
   -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin \
   quay.io/keycloak/keycloak:26.0 start-dev
 
-# 2. Configure Keycloak (see detailed steps below)
-# - Create realm: solr-mcp
-# - Create client: solr-mcp-client
+until curl -sf http://localhost:8180/realms/master/.well-known/openid-configuration \
+  > /dev/null; do sleep 2; done
+```
 
-# 3. Run Solr MCP Server with security enabled
+```bash
+# 2. Configure the realm, client and test user (equivalent to the console steps below)
+kcadm() { docker exec keycloak /opt/keycloak/bin/kcadm.sh "$@"; }
+
+kcadm config credentials --server http://localhost:8080 \
+  --realm master --user admin --password admin
+
+kcadm create realms -s realm=solr-mcp -s enabled=true
+
+# Public client. directAccessGrantsEnabled is what makes the password grant in
+# "Testing Authentication" work.
+CLIENT_ID=$(kcadm create clients -r solr-mcp -i \
+  -s clientId=solr-mcp-client -s enabled=true -s publicClient=true \
+  -s directAccessGrantsEnabled=true -s standardFlowEnabled=true \
+  -s 'redirectUris=["http://localhost:6274/*"]' \
+  -s 'webOrigins=["http://localhost:6274"]')
+
+# Audience mapper. The MCP server validates that "aud" matches its canonical
+# resource URI, and Keycloak does not populate that on its own — without this
+# mapper every tool call is rejected with 401 "The aud claim is not valid".
+kcadm create clients/"$CLIENT_ID"/protocol-mappers/models -r solr-mcp \
+  -s name=mcp-audience -s protocol=openid-connect \
+  -s protocolMapper=oidc-audience-mapper \
+  -s 'config."included.custom.audience"=http://localhost:8080/mcp' \
+  -s 'config."access.token.claim"=true' -s 'config."id.token.claim"=false'
+
+# Test user. firstName and lastName are required by Keycloak's default user
+# profile — omit them and token requests fail with "Account is not fully set up".
+USER_ID=$(kcadm create users -r solr-mcp -i \
+  -s username=testuser -s enabled=true \
+  -s email=test@example.com -s emailVerified=true \
+  -s firstName=Test -s lastName=User)
+
+kcadm set-password -r solr-mcp --username testuser --new-password testpassword
+```
+
+```bash
+# 3. Run Solr MCP Server with security enabled.
+#    The http profile enables Spring Boot's Docker Compose support, so this also
+#    starts the Solr and ZooKeeper services from compose.yaml.
 export PROFILES=http
 export HTTP_SECURITY_ENABLED=true
 export OAUTH2_ISSUER_URI=http://localhost:8180/realms/solr-mcp
 ./gradlew bootRun
 ```
+
+```bash
+# 4. Verify: an unauthenticated tool call is denied, an authenticated one succeeds
+CALL='{"jsonrpc":"2.0","method":"tools/call","id":1,
+       "params":{"name":"list-collections","arguments":{}}}'
+HDRS=(-H "Content-Type: application/json" -H "Accept: application/json, text/event-stream")
+
+curl -s -X POST http://localhost:8080/mcp "${HDRS[@]}" -d "$CALL"
+# -> {"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"Access Denied"}],"isError":true}}
+
+TOKEN=$(curl -s -X POST \
+  "http://localhost:8180/realms/solr-mcp/protocol/openid-connect/token" \
+  -d client_id=solr-mcp-client -d username=testuser \
+  -d password=testpassword -d grant_type=password | jq -r .access_token)
+
+curl -s -X POST http://localhost:8080/mcp -H "Authorization: Bearer $TOKEN" \
+  "${HDRS[@]}" -d "$CALL"
+# -> {"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"[\"books\",...]"}],"isError":false}}
+```
+
+> **Note:** `tools/list` answers without a token by design — `/mcp` is permitted at the
+> HTTP layer and authorization is enforced per tool via `@PreAuthorize`. Use a
+> `tools/call` as above to confirm security is actually active.
 
 ## Keycloak Setup
 
@@ -142,11 +210,40 @@ You need at least one client for applications to authenticate against.
    - Client type: `OpenID Connect`
 3. Click **Next**
 4. Client authentication: **OFF** (public client)
-5. Click **Next**
-6. Configure access settings:
+5. Authentication flow: keep **Standard flow** enabled, and keep **Direct access
+   grants** enabled — the password-grant `curl` in
+   [Testing Authentication](#testing-authentication) needs it
+6. Click **Next**
+7. Configure access settings:
    - Valid redirect URIs: `http://localhost:6274/*`, `http://localhost:*`
    - Web origins: `*` or `http://localhost:6274`
-7. Click **Save**
+8. Click **Save**
+
+#### Audience mapper (required)
+
+The MCP server validates that the token's `aud` claim matches its canonical resource
+URI, per [RFC 8707](https://www.rfc-editor.org/rfc/rfc8707.html) and the MCP
+Authorization specification. Keycloak does not populate that claim on its own, so
+without this mapper **every tool call fails** with:
+
+```
+401 WWW-Authenticate: Bearer error="invalid_token",
+    error_description="An error occurred while attempting to decode the Jwt:
+                       The aud claim is not valid"
+```
+
+1. Open the `solr-mcp-client` client → **Client scopes** tab
+2. Click the dedicated scope (`solr-mcp-client-dedicated`) → **Add mapper** → **By
+   configuration** → **Audience**
+3. Configure:
+   - Name: `mcp-audience`
+   - Included Custom Audience: the MCP server's resource URI, e.g.
+     `http://localhost:8080/mcp`
+   - Add to access token: **ON**
+4. Click **Save**
+
+See [HTTP transport security — Per-IdP setup for the audience claim](http.md) for the
+Auth0 and Okta equivalents.
 
 ### Creating Test Users
 
@@ -155,11 +252,18 @@ You need at least one client for applications to authenticate against.
    - Username: `testuser`
    - Email: `test@example.com`
    - Email verified: **ON**
+   - First name: `Test`
+   - Last name: `User`
 3. Click **Create**
 4. Go to the **Credentials** tab
 5. Click **Set password**
 6. Enter password and disable **Temporary**
 7. Click **Save**
+
+> **First and last name are required.** Keycloak's default user profile marks them
+> mandatory, and a user missing either one cannot obtain a token at all — the token
+> endpoint returns `{"error":"invalid_grant","error_description":"Account is not fully
+> set up"}`, which does not obviously point at the missing name fields.
 
 ## Spring Boot Configuration
 
@@ -206,7 +310,7 @@ curl -X POST "http://localhost:8180/realms/solr-mcp/protocol/openid-connect/toke
   -H "Content-Type: application/x-www-form-urlencoded" \
   -d "client_id=solr-mcp-client" \
   -d "username=testuser" \
-  -d "password=yourpassword" \
+  -d "password=testpassword" \
   -d "grant_type=password"
 ```
 
@@ -228,7 +332,7 @@ Response:
 TOKEN=$(curl -s -X POST "http://localhost:8180/realms/solr-mcp/protocol/openid-connect/token" \
   -d "client_id=solr-mcp-client" \
   -d "username=testuser" \
-  -d "password=yourpassword" \
+  -d "password=testpassword" \
   -d "grant_type=password" | jq -r '.access_token')
 
 # Call MCP endpoint
@@ -483,16 +587,67 @@ public String getSchema(String collection) { ... }
 
 ### Common Issues
 
-**"Invalid token" or 401 Unauthorized:**
+**The server exits with code 1 and prints nothing:**
+
+```
+> Task :bootRun FAILED
+> Process 'command '.../bin/java'' finished with non-zero exit value 1
+```
+
+Almost always the realm does not exist yet — step 2 of the
+[Quick Start](#quick-start) was skipped or only partly applied. Confirm with:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' \
+  http://localhost:8180/realms/solr-mcp/.well-known/openid-configuration
+# 200 = realm exists; 404 = create it
+```
+
+The MCP server builds its `NimbusJwtDecoder` eagerly while the Spring context is
+created, so an issuer that is *set but unresolvable* fails at startup. Note that an
+issuer left **empty** starts fine (the filter chain still returns 401/403) — only a
+configured-but-wrong issuer aborts startup.
+
+If you see no log output at all alongside the failure, force the logging
+configuration to surface the real stack trace:
+
+```bash
+LOGGING_CONFIG=classpath:logback-spring.xml PROFILES=http ./gradlew bootRun
+```
+
+**"Unable to resolve the Configuration with the provided Issuer":**
+
+- Keycloak must be running and accessible from the MCP server
+- The realm in `OAUTH2_ISSUER_URI` must already exist (see above)
+- Check the issuer URL: `http://localhost:8180/realms/solr-mcp/.well-known/openid-configuration`
+
+**401 with `"The aud claim is not valid"`:**
+
+The token has no audience matching the MCP server's resource URI. Add the
+[audience mapper](#audience-mapper-required) to the client, then request a fresh
+token — existing tokens keep the old claims. Verify with:
+
+```bash
+echo "$TOKEN" | cut -d. -f2 | base64 -d 2>/dev/null | jq .aud
+# must contain the MCP server resource URI, e.g. "http://localhost:8080/mcp"
+```
+
+**`{"error":"invalid_grant","error_description":"Account is not fully set up"}`:**
+
+The user is missing a field Keycloak's user profile requires — usually **first name**
+or **last name**. Fill them in under **Users** → select user → **Details**.
+
+**A tool call returns `"Access Denied"` instead of 401:**
+
+Expected when no token is sent. `/mcp` is permitted at the HTTP layer and
+authorization is enforced per tool by `@PreAuthorize`, so an anonymous `tools/call`
+comes back as a JSON-RPC error with `isError: true` rather than an HTTP 401. An
+anonymous `tools/list` succeeding is also expected.
+
+**"Invalid token" or 401 Unauthorized (other causes):**
 
 - Verify `OAUTH2_ISSUER_URI` matches your Keycloak realm URL exactly
-- Check that the token hasn't expired
-- Ensure Keycloak is accessible from the MCP server
-
-**"Unable to resolve issuer":**
-
-- Keycloak must be running and accessible
-- Check the issuer URL: `http://localhost:8180/realms/solr-mcp/.well-known/openid-configuration`
+- Check that the token hasn't expired (default lifetime is 5 minutes)
 
 **CORS errors with MCP Inspector:**
 
