@@ -132,23 +132,44 @@ artifact ships the SBOM without per-image wiring.
 ### Logging Architecture
 
 The STDIO transport uses stdout for JSON-RPC messages, so any stray stdout output
-corrupts the protocol. Logging is configured in two layers:
+corrupts the protocol.
 
-- **`logback.xml`** — Loaded by logback BEFORE Spring Boot initializes. Contains only
-  a `NopStatusListener` to suppress logback's internal status messages (`|-INFO`,
-  `|-WARN`) that would otherwise be written directly to stdout. Required for native
-  image where logback falls through to `BasicConfigurator` without it.
-- **`logback-spring.xml`** — Loaded by Spring Boot, overrides `logback.xml`. Uses
-  `<springProfile>` blocks to scope appenders per transport mode:
-  - **HTTP**: CONSOLE appender (stdout) + OpenTelemetry appender (OTLP log export with
-    `captureExperimentalAttributes` and `captureKeyValuePairAttributes` enabled).
-  - **STDIO**: No appenders defined. Relies on `logging.pattern.console=` in
-    `application-stdio.properties` to produce empty output from Spring Boot's default
-    console appender. The OTEL appender is intentionally excluded to keep stdout clean.
-- **`application-stdio.properties`** — Sets `logging.pattern.console=` (empty pattern)
-  which suppresses all Spring-managed console logging after Spring Boot initializes.
+**`logback-spring.xml` is the only logging configuration this project ships, and the
+`-spring` suffix is load-bearing.** Spring Boot resolves the *standard* Logback
+locations (`logback-test.xml`, `logback.xml`, …) first in
+`AbstractLoggingSystem.initializeWithConventions()`; if it finds one and
+`logging.file.name` is unset, it reinitializes from that file and returns, never
+loading the `-spring` variant. So adding a `logback.xml` alongside does not override
+`logback-spring.xml` — it **disables** it, silently dropping every `<springProfile>`
+appender. This is Boot's documented rule: `<springProfile>` "cannot be used in the
+standard `logback.xml` file because it is loaded too early."
 
-**Init order**: logback.xml → Spring Boot starts → logback-spring.xml → application-{profile}.properties
+That trap was live in this repo: both files existed, so HTTP mode ran with no
+appenders at all — no console logs, no OTLP log export, and startup failures exited
+1 showing only the Spring banner. `LoggingConfigurationTest` now fails the build if
+any standard-location Logback file reappears.
+
+Contents of `logback-spring.xml`:
+
+- A `NopStatusListener` suppressing logback's internal status messages (`|-INFO`,
+  `|-WARN`), which are written straight to stdout and bypass the appenders.
+- `<springProfile>` blocks scoping appenders per transport mode:
+  - **HTTP**: Boot's own `console-appender.xml` (so `logging.pattern.console` /
+    `logging.charset.console` / `logging.threshold.console` behave as in a stock Boot
+    app) + OpenTelemetry appender (OTLP log export with `captureExperimentalAttributes`
+    and `captureKeyValuePairAttributes` enabled).
+  - **STDIO**: No appenders defined, so nothing can reach stdout. The OTEL appender is
+    intentionally excluded too.
+- `application-stdio.properties` additionally sets `logging.pattern.console=` (empty
+  pattern) as a second line of defence.
+
+`SolrNativeHints` registers `logback-spring.xml` as a native-image resource.
+
+**Init order**: Spring Boot starts → logback-spring.xml → application-{profile}.properties
+
+**Debugging tip**: if an HTTP-mode startup fails with no output, logging config is the
+first suspect — run with `LOGGING_CONFIG=classpath:logback-spring.xml` to force-load it
+and reveal the real stack trace.
 
 ### Docker image strategy
 
