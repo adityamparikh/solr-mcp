@@ -264,6 +264,11 @@ Auth0 and Okta equivalents.
 > mandatory, and a user missing either one cannot obtain a token at all — the token
 > endpoint returns `{"error":"invalid_grant","error_description":"Account is not fully
 > set up"}`, which does not obviously point at the missing name fields.
+>
+> **Step 6 matters for the same reason.** Leaving **Temporary** ON attaches an
+> `UPDATE_PASSWORD` required action, which fails the token request with that same
+> message. The [Troubleshooting](#troubleshooting) section shows how to tell the two
+> apart.
 
 ## Spring Boot Configuration
 
@@ -402,6 +407,12 @@ curl -X POST "http://localhost:8180/admin/realms/solr-mcp/users" \
     }]
   }'
 ```
+
+> `"temporary": true` is the right default when provisioning a real user — it forces a
+> password change on first login. It also attaches an `UPDATE_PASSWORD` required action,
+> so this account cannot obtain a token via the password grant until that is resolved
+> through the browser login flow. Use `"temporary": false` for accounts you intend to
+> drive from scripts or tests, and populate `firstName`/`lastName` for the same reason.
 
 ### JSON Import
 
@@ -634,8 +645,62 @@ echo "$TOKEN" | cut -d. -f2 | base64 -d 2>/dev/null | jq .aud
 
 **`{"error":"invalid_grant","error_description":"Account is not fully set up"}`:**
 
-The user is missing a field Keycloak's user profile requires — usually **first name**
-or **last name**. Fill them in under **Users** → select user → **Details**.
+The account is not in a state Keycloak will issue a token for. The password grant has
+no browser leg, so there is nowhere to render the "complete your profile" or "update
+your password" page — Keycloak rejects the whole grant instead of prompting. The same
+account signs in fine through a browser flow, which is why this looks like it only
+breaks `curl`.
+
+Two different causes produce this identical message:
+
+1. **A required user-profile field is blank** — usually **first name** or **last name**,
+   both of which are `required` in Keycloak's default user profile. Fill them in under
+   **Users** → select user → **Details**.
+2. **The account has a pending required action** — most often `UPDATE_PASSWORD`, added
+   automatically whenever a password is set with **Temporary** ON.
+
+Check both at once:
+
+```bash
+ADMIN=$(curl -s -X POST "http://localhost:8180/realms/master/protocol/openid-connect/token" \
+  -d "client_id=admin-cli" -d "username=admin" -d "password=admin" \
+  -d "grant_type=password" | jq -r '.access_token')
+
+curl -s -H "Authorization: Bearer $ADMIN" \
+  "http://localhost:8180/admin/realms/solr-mcp/users?username=testuser&exact=true" \
+  | jq -c '.[] | {username, firstName, lastName, emailVerified, requiredActions}'
+```
+
+A ready-to-use account has both names populated and an empty `requiredActions`:
+
+```json
+{"username":"testuser","firstName":"Test","lastName":"User","emailVerified":true,"requiredActions":[]}
+```
+
+Required actions and what they mean:
+
+| Required action | Usual cause | Fix |
+|-----------------|-------------|-----|
+| `UPDATE_PASSWORD` | Password was set with **Temporary** ON | Re-set the password with **Temporary** OFF |
+| `VERIFY_EMAIL` | Realm has email verification enabled | Set **Email verified** ON for the user |
+| `UPDATE_PROFILE` | A required profile field is blank | Fill in the missing fields |
+| `CONFIGURE_TOTP` | OTP required by the realm or a policy | Enroll OTP via the browser flow, or drop the requirement |
+
+Clear pending actions from the console (**Users** → select user → **Details** →
+**Required user actions** → remove → **Save**), or over the REST API:
+
+```bash
+USER_ID=$(curl -s -H "Authorization: Bearer $ADMIN" \
+  "http://localhost:8180/admin/realms/solr-mcp/users?username=testuser&exact=true" | jq -r '.[0].id')
+
+curl -X PUT "http://localhost:8180/admin/realms/solr-mcp/users/$USER_ID" \
+  -H "Authorization: Bearer $ADMIN" -H "Content-Type: application/json" \
+  -d '{"requiredActions":[]}'
+```
+
+Clearing an action does not change the password — the credential you already set stays
+valid. Do this for test accounts only; real users should resolve the action through the
+browser login flow.
 
 **A tool call returns `"Access Denied"` instead of 401:**
 
@@ -673,6 +738,15 @@ echo $TOKEN | cut -d'.' -f2 | base64 -d 2>/dev/null | jq
 
 ```bash
 curl http://localhost:8180/realms/solr-mcp/.well-known/openid-configuration | jq
+```
+
+**Check whether an account can obtain a token:**
+
+```bash
+curl -s -H "Authorization: Bearer $ADMIN" \
+  "http://localhost:8180/admin/realms/solr-mcp/users?username=testuser&exact=true" \
+  | jq -c '.[] | {firstName, lastName, requiredActions}'
+# names populated + requiredActions [] = good to go
 ```
 
 **View Keycloak logs:**
