@@ -15,6 +15,9 @@ This guide covers setting up [Keycloak](https://www.keycloak.org/) as an OAuth2/
 - [Spring Boot Configuration](#spring-boot-configuration)
 - [Running the Server](#running-the-server)
 - [Testing Authentication](#testing-authentication)
+  - [Obtain a Token](#obtain-a-token)
+  - [Machine-to-Machine Tokens](#machine-to-machine-tokens)
+  - [Call the MCP Server](#call-the-mcp-server)
 - [User Management Options](#user-management-options)
   - [Manual User Creation](#manual-user-creation)
   - [Identity Brokering (GitHub, Google, etc.)](#identity-brokering-github-google-etc)
@@ -219,6 +222,71 @@ Response:
   "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
   "token_type": "Bearer"
 }
+```
+
+### Machine-to-Machine Tokens
+
+The password grant above assumes a human. A service that calls this MCP server on its own behalf --
+an agent, a scheduled job, another application -- has no user to authenticate, and uses the
+**client credentials** grant with the confidential client created in
+[Creating Clients](#creating-clients). That client must have **Client authentication: ON** and
+**Service accounts roles** enabled; a public client cannot use this grant at all.
+
+```bash
+KC=http://localhost:8180
+
+ADMIN_TOKEN=$(curl -s -X POST "$KC/realms/master/protocol/openid-connect/token" \
+  -d client_id=admin-cli -d username=admin -d password=admin \
+  -d grant_type=password | jq -r .access_token)
+
+CLIENT_UUID=$(curl -s "$KC/admin/realms/solr-mcp/clients?clientId=solr-mcp-server" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" | jq -r '.[0].id')
+
+CLIENT_SECRET=$(curl -s "$KC/admin/realms/solr-mcp/clients/$CLIENT_UUID/client-secret" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" | jq -r '.value')
+
+TOKEN=$(curl -s -X POST "$KC/realms/solr-mcp/protocol/openid-connect/token" \
+  -d "grant_type=client_credentials" \
+  -d "client_id=solr-mcp-server" \
+  -d "client_secret=$CLIENT_SECRET" | jq -r '.access_token')
+```
+
+#### The audience mapper belongs on whichever client obtains the token
+
+The [Quick Start](#quick-start) adds the audience mapper to the public client used by MCP Inspector,
+so a service client created by following [Creating Clients](#creating-clients) has none of its own.
+Its tokens are issued normally and then rejected by the server with `401`, because
+`validateAudienceClaim(true)` finds no matching `aud`. Add the mapper to the service client too --
+see [Configuring the Audience Claim](#configuring-the-audience-claim) for what each field means:
+
+```bash
+curl -s -X POST "$KC/admin/realms/solr-mcp/clients/$CLIENT_UUID/protocol-mappers/models" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
+  -d '{
+        "name": "mcp-audience",
+        "protocol": "openid-connect",
+        "protocolMapper": "oidc-audience-mapper",
+        "config": {
+          "included.custom.audience": "http://localhost:8080/mcp",
+          "access.token.claim": "true",
+          "id.token.claim": "false"
+        }
+      }'
+```
+
+Request a fresh token afterwards -- the mapper applies at issue time -- and confirm the claim before
+pointing an application at it, since it is the whole difference between a working token and a `401`:
+
+```bash
+echo "$TOKEN" | jq -R 'split(".")[1] | @base64d | fromjson | .aud'
+# ["http://localhost:8080/mcp", "account"]
+```
+
+`account` comes from Keycloak's own `audience resolve` mapper and is harmless: the server checks that
+its resource URI is present, not that it is the only entry. Confirm the URI it expects with:
+
+```bash
+curl -s http://localhost:8080/.well-known/oauth-protected-resource | jq -r .resource
 ```
 
 ### Call the MCP Server
@@ -511,7 +579,7 @@ public String getSchema(String collection) { ... }
 
 ```bash
 # Decode token (without verification)
-echo $TOKEN | cut -d'.' -f2 | base64 -d 2>/dev/null | jq
+echo "$TOKEN" | jq -R 'split(".")[1] | @base64d | fromjson'
 ```
 
 **Check Keycloak OpenID configuration:**
