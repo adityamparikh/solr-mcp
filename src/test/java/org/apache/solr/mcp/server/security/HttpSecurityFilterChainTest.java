@@ -17,7 +17,6 @@
 package org.apache.solr.mcp.server.security;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -29,6 +28,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpStatus;
 import org.springframework.test.context.ActiveProfiles;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
@@ -58,6 +58,15 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @Testcontainers(disabledWithoutDocker = true)
 class HttpSecurityFilterChainTest {
 
+	/** Open for liveness/readiness probes — the one anonymous actuator path. */
+	private static final String HEALTH_PROBE = "/actuator/health";
+
+	/** Exposes the full dependency tree; must never be anonymous. */
+	private static final String SBOM_ENDPOINT = "/actuator/sbom/application";
+
+	/** Maps the tool surface; must never be anonymous. */
+	private static final String METRICS_ENDPOINT = "/actuator/metrics";
+
 	@LocalServerPort
 	private int port;
 
@@ -68,30 +77,39 @@ class HttpSecurityFilterChainTest {
 
 	@Test
 	void healthProbeIsAnonymouslyReachable() throws Exception {
-		assertEquals(200, statusOf("/actuator/health"),
-				"/actuator/health must stay open for liveness and readiness probes");
+		assertEquals(HttpStatus.OK.value(), statusOf(HEALTH_PROBE),
+				HEALTH_PROBE + " must stay open for liveness and readiness probes");
 	}
 
 	/**
-	 * Denial here is 403, not 401: with no issuer configured there is no
-	 * authentication entry point to challenge with, so Spring Security rejects
-	 * rather than prompting. Wiring an issuer turns the same request into a 401
-	 * carrying {@code WWW-Authenticate: Bearer}. Both are correct denials, so these
-	 * accept either — what must never happen is a 200.
+	 * Denial in this context is exactly {@code 403}, and the assertion pins that
+	 * rather than accepting "401 or 403".
+	 *
+	 * <p>
+	 * This class configures no issuer, so {@link HttpSecurityConfiguration} skips
+	 * the OAuth2 wiring and no {@code BearerTokenAuthenticationEntryPoint} is
+	 * installed. Spring Security falls back to {@code Http403ForbiddenEntryPoint},
+	 * which rejects outright instead of issuing a challenge — measured as
+	 * {@code 403} on every denied path here.
+	 *
+	 * <p>
+	 * Accepting either code would weaken the test in a way that matters: a chain
+	 * that silently lost its bearer-token entry point, or gained one it should not
+	 * have, would still pass. Wiring an issuer turns the same request into a
+	 * {@code 401} carrying {@code WWW-Authenticate: Bearer} — a different
+	 * configuration, and one this class deliberately does not exercise.
 	 */
 	private void assertDenied(String path, String why) throws Exception {
-		int status = statusOf(path);
-		assertTrue(status == 401 || status == 403, why + " — expected 401 or 403, got " + status);
+		assertEquals(HttpStatus.FORBIDDEN.value(), statusOf(path), why);
 	}
 
 	@Test
 	void sbomEndpointRequiresAuthentication() throws Exception {
-		assertDenied("/actuator/sbom/application",
-				"/actuator/sbom/application exposes the full dependency tree and must not be anonymous");
+		assertDenied(SBOM_ENDPOINT, SBOM_ENDPOINT + " exposes the full dependency tree and must not be anonymous");
 	}
 
 	@Test
 	void metricsEndpointRequiresAuthentication() throws Exception {
-		assertDenied("/actuator/metrics", "/actuator/metrics maps the tool surface and must not be anonymous");
+		assertDenied(METRICS_ENDPOINT, METRICS_ENDPOINT + " maps the tool surface and must not be anonymous");
 	}
 }

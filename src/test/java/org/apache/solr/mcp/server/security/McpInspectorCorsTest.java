@@ -23,12 +23,16 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.List;
 import org.apache.solr.mcp.server.TestcontainersConfiguration;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.test.context.ActiveProfiles;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
@@ -62,48 +66,61 @@ class McpInspectorCorsTest {
 	/** The MCP Inspector UI origin, and the shipped default allowlist entry. */
 	private static final String INSPECTOR_ORIGIN = "http://localhost:6274";
 
+	/** Single path the MCP Streamable HTTP transport routes through. */
+	private static final String MCP_ENDPOINT = "/mcp";
+
+	/**
+	 * Methods the Streamable HTTP transport needs: POST sends messages, GET opens
+	 * the stream, DELETE ends the session. Dropping any one breaks a different part
+	 * of the transport.
+	 */
+	private static final List<HttpMethod> TRANSPORT_METHODS = List.of(HttpMethod.GET, HttpMethod.POST,
+			HttpMethod.DELETE);
+
 	@LocalServerPort
 	private int port;
 
-	private HttpResponse<String> preflight(String origin, String method, String requestHeaders) throws Exception {
-		HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/mcp"))
-				.method("OPTIONS", HttpRequest.BodyPublishers.noBody()).header("Origin", origin)
-				.header("Access-Control-Request-Method", method);
+	private HttpResponse<String> preflight(String origin, HttpMethod method, String requestHeaders) throws Exception {
+		HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create("http://localhost:" + port + MCP_ENDPOINT))
+				.method(HttpMethod.OPTIONS.name(), HttpRequest.BodyPublishers.noBody())
+				.header(HttpHeaders.ORIGIN, origin).header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, method.name());
 		if (requestHeaders != null) {
-			builder.header("Access-Control-Request-Headers", requestHeaders);
+			builder.header(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS, requestHeaders);
 		}
 		return HttpClient.newHttpClient().send(builder.build(), HttpResponse.BodyHandlers.ofString());
 	}
 
 	@Test
 	void inspectorPreflightIsAllowed() throws Exception {
-		HttpResponse<String> response = preflight(INSPECTOR_ORIGIN, "POST", "content-type,authorization");
+		HttpResponse<String> response = preflight(INSPECTOR_ORIGIN, HttpMethod.POST,
+				HttpHeaders.CONTENT_TYPE + "," + HttpHeaders.AUTHORIZATION);
 
-		assertEquals(200, response.statusCode(),
+		assertEquals(HttpStatus.OK.value(), response.statusCode(),
 				"The MCP Inspector cannot connect unless its origin passes preflight. Check that "
 						+ "mcp.cors.allowed-origins still contains " + INSPECTOR_ORIGIN);
-		assertEquals(INSPECTOR_ORIGIN, response.headers().firstValue("Access-Control-Allow-Origin").orElse(null),
+		assertEquals(INSPECTOR_ORIGIN,
+				response.headers().firstValue(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN).orElse(null),
 				"The specific origin must be echoed back; a wildcard is invalid alongside credentials");
-		assertEquals("true", response.headers().firstValue("Access-Control-Allow-Credentials").orElse(null),
+		assertEquals(Boolean.TRUE.toString(),
+				response.headers().firstValue(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS).orElse(null),
 				"The Inspector sends the bearer token as a credentialed request");
 	}
 
 	@Test
 	void inspectorTransportMethodsAreAllowed() throws Exception {
-		String allowed = preflight(INSPECTOR_ORIGIN, "POST", null).headers().firstValue("Access-Control-Allow-Methods")
-				.orElse("");
+		String allowed = preflight(INSPECTOR_ORIGIN, HttpMethod.POST, null).headers()
+				.firstValue(HttpHeaders.ACCESS_CONTROL_ALLOW_METHODS).orElse("");
 
-		// Streamable HTTP: POST sends messages, GET opens the stream, DELETE ends
-		// the session. Dropping any one breaks a different part of the transport.
-		for (String method : new String[]{"GET", "POST", "DELETE"}) {
-			assertTrue(allowed.contains(method),
+		for (HttpMethod method : TRANSPORT_METHODS) {
+			assertTrue(allowed.contains(method.name()),
 					() -> "MCP Streamable HTTP needs " + method + "; Allow-Methods was: " + allowed);
 		}
 	}
 
 	@Test
 	void unknownOriginIsRejected() throws Exception {
-		assertEquals(403, preflight("http://not-the-inspector.example", "POST", null).statusCode(),
+		assertEquals(HttpStatus.FORBIDDEN.value(),
+				preflight("http://not-the-inspector.example", HttpMethod.POST, null).statusCode(),
 				"Origins outside the allowlist must be refused, otherwise the allowlist is decorative");
 	}
 }
