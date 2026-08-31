@@ -16,8 +16,11 @@
  */
 package org.apache.solr.mcp.server.security;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import java.util.List;
 import org.apache.solr.mcp.server.TestcontainersConfiguration;
 import org.apache.solr.mcp.server.collection.CollectionService;
 import org.junit.jupiter.api.Tag;
@@ -27,6 +30,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ActiveProfiles;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
@@ -71,5 +75,36 @@ class MethodSecurityEnforcementTest {
 				"list-collections carries @PreAuthorize(\"isAuthenticated()\") and was called with no "
 						+ "authentication, so method security must reject it. Succeeding means the annotation "
 						+ "is decorative: @EnableMethodSecurity is not in effect for this context.");
+	}
+
+	/**
+	 * The necessary counterpart to
+	 * {@link #unauthenticatedCallToSecuredToolIsRejected()}.
+	 *
+	 * <p>
+	 * A rejection test on its own cannot distinguish "correctly denies anonymous
+	 * callers" from "denies every caller". Both produce the same green result, so a
+	 * gate that were wedged permanently shut would look identical to a working one.
+	 * That gap is not hypothetical: a secured tool call was for a time believed
+	 * broken — reported as denying even valid tokens — and no test existed that
+	 * could have contradicted it. The claim turned out to be false, but only a live
+	 * server proved so.
+	 *
+	 * <p>
+	 * {@code @WithMockUser} installs an authenticated principal before the method
+	 * runs and clears it afterwards, so the {@code ThreadLocal} context cannot leak
+	 * into {@link #unauthenticatedCallToSecuredToolIsRejected()} and make that test
+	 * order-dependent.
+	 */
+	@Test
+	@WithMockUser
+	void authenticatedCallToSecuredToolSucceeds() {
+		List<String> collections = assertDoesNotThrow(() -> collectionService.listCollections(),
+				"list-collections is gated by @PreAuthorize(\"isAuthenticated()\") and was called with an "
+						+ "authenticated principal, so method security must permit it. An AccessDeniedException "
+						+ "here means the gate rejects everyone, not just anonymous callers — the annotation "
+						+ "would be denying valid callers rather than enforcing a boundary.");
+
+		assertNotNull(collections, "an authorized list-collections call must return a result, not null");
 	}
 }
