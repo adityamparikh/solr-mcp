@@ -598,6 +598,15 @@ details.panel > summary .hint {
         </div>
       </div>
       <div class="picker-row">
+        <span class="picker-label">Data format</span>
+        <div class="seg" data-group="format">
+          <button type="button" data-val="json" aria-pressed="true">JSON</button>
+          <button type="button" data-val="csv" aria-pressed="false">CSV</button>
+          <button type="button" data-val="xml" aria-pressed="false">XML</button>
+          <button type="button" data-val="markdown" aria-pressed="false">Markdown</button>
+        </div>
+      </div>
+      <div class="picker-row">
         <span class="picker-label">Client</span>
         <div class="seg" data-group="client">
           <button type="button" data-val="claude-code" aria-pressed="true">Claude Code</button>
@@ -612,9 +621,11 @@ details.panel > summary .hint {
     </div>
 
     <p style="font-size:.85rem;color:var(--ink-3)">
-      These four choices drive every command on this page. Set them once. STDIO is the
+      These five choices drive every command on this page. Set them once. STDIO is the
       default: your client launches the server as a subprocess, nothing else to run. HTTP starts
-      one server in a terminal that any client connects to over a URL.
+      one server in a terminal that any client connects to over a URL. The data format picks
+      which flavour of the same 61-show dataset step 3 indexes; JSON is the path the rest of the
+      card was written against.
     </p>
 
     <div data-runtime="docker">
@@ -727,7 +738,7 @@ sdk install java 25-tem</code></pre></div>
     </div>
 
     <p>
-      Commands below follow the four choices you made in step 0. Change them there and
+      Commands below follow the choices you made in step 0. Change them there and
       everything on this page updates.
     </p>
 
@@ -1170,7 +1181,7 @@ java -jar C:/path/to/solr-mcp-1.0.0-SNAPSHOT.jar</code></pre></div>
       <button class="done-toggle" type="button">Mark done</button>
     </div>
     <p>
-      Solr's <code class="inline">_default</code> configset is <b>schemaless</b>: throw JSON at
+      Solr's <code class="inline">_default</code> configset is <b>schemaless</b>: throw data at
       it and it invents field types for you. We're going to do exactly that, watch it work,
       and then watch it bite. That contrast is the point of this whole exercise.
     </p>
@@ -1191,23 +1202,77 @@ java -jar C:/path/to/solr-mcp-1.0.0-SNAPSHOT.jar</code></pre></div>
     <details class="panel">
       <summary>Option A — 61 shows from a file <span class="hint">Claude Code, Cursor, Copilot, Zed, IntelliJ</span></summary>
       <div class="panel-body">
-        <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>curl -O https://raw.githubusercontent.com/apache/solr-mcp/main/src/test/resources/shows.json</code></pre></div>
+        <div data-format="json">
+          <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>curl -O https://raw.githubusercontent.com/apache/solr-mcp/main/src/test/resources/shows.json</code></pre></div>
         <div class="prompts">
           <div class="prompt">
             <q>Index the contents of ./shows.json into the shows-auto collection.<span class="why">calls <b>index-json-documents</b> — expect 61 of 61</span></q>
             <button class="copy-sm" type="button" data-copy="Index the contents of ./shows.json into the shows-auto collection.">Copy</button>
           </div>
         </div>
+        </div>
+        <div data-format="csv">
+          <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>curl -O https://raw.githubusercontent.com/adityamparikh/solr-mcp/feat/shows-sample-formats/src/test/resources/shows.csv</code></pre></div>
+        <div class="prompts">
+          <div class="prompt">
+            <q>Index the contents of ./shows.csv into the shows-auto collection.<span class="why">calls <b>index-csv-documents</b> — expect 61 of 61</span></q>
+            <button class="copy-sm" type="button" data-copy="Index the contents of ./shows.csv into the shows-auto collection.">Copy</button>
+          </div>
+        </div>
+          <p style="font-size:.86rem;color:var(--ink-2)">
+            Multi-valued fields (<code class="inline">genres</code>, <code class="inline">cast</code>…)
+            are repeated column headers; every non-empty cell becomes one value. Numbers arrive as
+            text and Solr's parsers still guess numeric types, so the next step plays out the same.
+          </p>
+        </div>
+        <div data-format="xml">
+          <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>curl -O https://raw.githubusercontent.com/adityamparikh/solr-mcp/feat/shows-sample-formats/src/test/resources/shows.xml</code></pre></div>
+        <div class="prompts">
+          <div class="prompt">
+            <q>Index the contents of ./shows.xml into the shows-auto collection.<span class="why">calls <b>index-xml-documents</b> — expect 61 of 61</span></q>
+            <button class="copy-sm" type="button" data-copy="Index the contents of ./shows.xml into the shows-auto collection.">Copy</button>
+          </div>
+        </div>
+          <div class="note warn">
+            <span class="tag">XML field names differ</span>
+            <p>
+              The XML tool flattens nested elements by path, so every field lands prefixed with the
+              record element: <code class="inline">show_platform</code>,
+              <code class="inline">show_imdb_rating</code>, and the show's
+              <code class="inline">id</code> becomes <code class="inline">show_id</code> while Solr
+              assigns its own <code class="inline">id</code>. Later prompts on this card say
+              <code class="inline">platform</code>; with XML, say
+              <code class="inline">show_platform</code>, or pick another format for steps 4–7.
+            </p>
+          </div>
+        </div>
+        <div data-format="markdown">
+          <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>curl -L https://github.com/adityamparikh/solr-mcp/archive/refs/heads/feat/shows-sample-formats.tar.gz \
+  | tar xz --strip-components=4 'solr-mcp-feat-shows-sample-formats/src/test/resources/shows-markdown'</code></pre></div>
+        <div class="prompts">
+          <div class="prompt">
+            <q>Index every file in ./shows-markdown into the shows-auto collection, one document per file.<span class="why">calls <b>index-markdown-documents</b> 61 times — one document per Markdown file</span></q>
+            <button class="copy-sm" type="button" data-copy="Index every file in ./shows-markdown into the shows-auto collection, one document per file.">Copy</button>
+          </div>
+        </div>
+          <p style="font-size:.86rem;color:var(--ink-2)">
+            One Markdown document is one Solr document: the fields live in YAML front matter and
+            the description is the body, which also lands as <code class="inline">content</code>
+            with the title in <code class="inline">headings</code>. Sixty-one files means sixty-one
+            tool calls; watch the assistant work through them.
+          </p>
+        </div>
       </div>
     </details>
 
     <details class="panel">
-      <summary>Option B — 12 shows, paste anywhere <span class="hint">Claude Desktop, or any chat-only client</span></summary>
+      <summary>Option B — a dozen shows, paste anywhere <span class="hint">Claude Desktop, or any chat-only client</span></summary>
       <div class="panel-body">
         <p style="font-size:.86rem">
           Same shape, same lesson, small enough to paste into a chat box. Copy this whole block
           and send it with the sentence at the top.
         </p>
+        <div data-format="json">
         <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>Index this JSON into the shows-auto collection:
 
 [
@@ -1224,6 +1289,457 @@ java -jar C:/path/to/solr-mcp-1.0.0-SNAPSHOT.jar</code></pre></div>
   {"id":"hbo-003","title":"The Last of Us","platform":"HBO Max","genres":["Drama","Horror","Adventure"],"release_year":2023,"end_year":0,"status":"Ongoing","seasons":2,"episodes":16,"creators":["Craig Mazin","Neil Druckmann"],"cast":["Pedro Pascal","Bella Ramsey","Gabriel Luna"],"country":"USA","language":"English","rating":"TV-MA","imdb_rating":8.7,"description":"A smuggler escorts a teenage girl across a post-apocalyptic United States.","tags":["adaptation","post-apocalyptic","survival"]},
   {"id":"hulu-002","title":"Only Murders in the Building","platform":"Hulu","genres":["Comedy","Mystery","Crime"],"release_year":2021,"end_year":0,"status":"Ongoing","seasons":4,"episodes":40,"creators":["Steve Martin","John Hoffman"],"cast":["Steve Martin","Martin Short","Selena Gomez"],"country":"USA","language":"English","rating":"TV-14","imdb_rating":8.1,"description":"Three true-crime obsessed neighbours investigate a death in their apartment building.","tags":["whodunnit","comedy","new-york"]}
 ]</code></pre></div>
+        </div>
+        <div data-format="csv">
+        <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>Index this CSV into the shows-auto collection:
+id,title,platform,genres,genres,genres,release_year,end_year,status,seasons,episodes,creators,creators,creators,cast,cast,cast,cast,country,language,rating,imdb_rating,description,tags,tags,tags,tags
+hbo-001,Game of Thrones,HBO Max,Fantasy,Drama,Adventure,2011,2019,Ended,8,73,David Benioff,D.B. Weiss,,Emilia Clarke,Peter Dinklage,Kit Harington,Lena Headey,USA,English,TV-MA,9.2,&quot;Nine noble families fight for control over the lands of Westeros, while an ancient enemy returns after being dormant for millennia.&quot;,fantasy,dragons,epic,george-rr-martin
+netflix-001,Stranger Things,Netflix,Sci-Fi,Horror,Drama,2016,2025,Ended,5,42,Matt Duffer,Ross Duffer,,Millie Bobby Brown,Finn Wolfhard,Winona Ryder,David Harbour,USA,English,TV-14,8.7,A group of kids in 1980s Indiana uncover supernatural mysteries and government conspiracies tied to a parallel dimension.,80s,supernatural,coming-of-age,monsters
+hulu-001,The Handmaid&#x27;s Tale,Hulu,Drama,Sci-Fi,Dystopian,2017,2025,Ended,6,66,Bruce Miller,,,Elisabeth Moss,Joseph Fiennes,Yvonne Strahovski,Samira Wiley,USA,English,TV-MA,8.4,&quot;Set in a dystopian future, a woman is forced to live as a concubine under a fundamentalist theocratic dictatorship.&quot;,dystopian,feminist,atwood,theocracy
+disney-001,The Mandalorian,Disney+,Sci-Fi,Action,Adventure,2019,,Ongoing,3,24,Jon Favreau,,,Pedro Pascal,Carl Weathers,Giancarlo Esposito,,USA,English,TV-14,8.6,&quot;The travels of a lone bounty hunter in the outer reaches of the galaxy, far from the authority of the New Republic.&quot;,star-wars,space-western,grogu,baby-yoda
+hbo-002,Succession,HBO Max,Drama,Comedy,,2018,2023,Ended,4,39,Jesse Armstrong,,,Brian Cox,Jeremy Strong,Kieran Culkin,Sarah Snook,USA,English,TV-MA,8.9,&quot;The Roy family controls the biggest media and entertainment company in the world, but their patriarch&#x27;s health is failing.&quot;,media,family-drama,satire,wealth
+prime-001,The Boys,Amazon Prime Video,Action,Sci-Fi,Drama,2019,,Ongoing,4,32,Eric Kripke,,,Karl Urban,Jack Quaid,Antony Starr,Erin Moriarty,USA,English,TV-MA,8.7,A group of vigilantes set out to take down corrupt superheroes who abuse their powers.,superheroes,satire,violent,comic-adaptation
+netflix-002,The Crown,Netflix,Drama,Historical,Biography,2016,2023,Ended,6,60,Peter Morgan,,,Claire Foy,Olivia Colman,Imelda Staunton,Matt Smith,UK,English,TV-MA,8.6,The reign of Queen Elizabeth II from her wedding in 1947 through the early 21st century.,royalty,british,period-drama,politics
+prime-002,The Marvelous Mrs. Maisel,Amazon Prime Video,Comedy,Drama,Period,2017,2023,Ended,5,43,Amy Sherman-Palladino,,,Rachel Brosnahan,Alex Borstein,Michael Zegen,Tony Shalhoub,USA,English,TV-MA,8.7,A 1950s New York housewife discovers she has a talent for stand-up comedy.,50s,stand-up,feminist,new-york
+hbo-003,The Last of Us,HBO Max,Drama,Horror,Sci-Fi,2023,,Ongoing,2,16,Craig Mazin,Neil Druckmann,,Pedro Pascal,Bella Ramsey,Anna Torv,,USA,English,TV-MA,8.7,&quot;After a global pandemic destroys civilization, a hardened survivor takes charge of a 14-year-old girl who may be humanity&#x27;s last hope.&quot;,post-apocalyptic,zombies,video-game-adaptation,fungal
+hulu-002,The Bear,Hulu,Comedy,Drama,,2022,,Ongoing,3,28,Christopher Storer,,,Jeremy Allen White,Ebon Moss-Bachrach,Ayo Edebiri,,USA,English,TV-MA,8.6,A young chef from the fine dining world returns to Chicago to run his family&#x27;s sandwich shop after a heartbreaking death.,cooking,chicago,family,anxiety
+netflix-003,Squid Game,Netflix,Thriller,Drama,Survival,2021,2025,Ended,3,22,Hwang Dong-hyuk,,,Lee Jung-jae,Park Hae-soo,Wi Ha-joon,HoYeon Jung,South Korea,Korean,TV-MA,8.0,Hundreds of cash-strapped contestants accept an invitation to compete in deadly children&#x27;s games for a tempting prize.,korean,survival,dystopian,social-commentary
+netflix-004,Wednesday,Netflix,Comedy,Horror,Mystery,2022,,Ongoing,2,16,Alfred Gough,Miles Millar,,Jenna Ortega,Catherine Zeta-Jones,Luis Guzmán,Gwendoline Christie,USA,English,TV-14,8.1,Wednesday Addams navigates a supernatural boarding school while solving a murder mystery.,gothic,teen,supernatural,addams-family</code></pre></div>
+        </div>
+        <div data-format="xml">
+        <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>Index this XML into the shows-auto collection:
+&lt;shows&gt;
+  &lt;show&gt;
+    &lt;id&gt;hbo-001&lt;/id&gt;
+    &lt;title&gt;Game of Thrones&lt;/title&gt;
+    &lt;platform&gt;HBO Max&lt;/platform&gt;
+    &lt;genres&gt;Fantasy&lt;/genres&gt;
+    &lt;genres&gt;Drama&lt;/genres&gt;
+    &lt;genres&gt;Adventure&lt;/genres&gt;
+    &lt;release_year&gt;2011&lt;/release_year&gt;
+    &lt;end_year&gt;2019&lt;/end_year&gt;
+    &lt;status&gt;Ended&lt;/status&gt;
+    &lt;seasons&gt;8&lt;/seasons&gt;
+    &lt;episodes&gt;73&lt;/episodes&gt;
+    &lt;creators&gt;David Benioff&lt;/creators&gt;
+    &lt;creators&gt;D.B. Weiss&lt;/creators&gt;
+    &lt;cast&gt;Emilia Clarke&lt;/cast&gt;
+    &lt;cast&gt;Peter Dinklage&lt;/cast&gt;
+    &lt;cast&gt;Kit Harington&lt;/cast&gt;
+    &lt;cast&gt;Lena Headey&lt;/cast&gt;
+    &lt;country&gt;USA&lt;/country&gt;
+    &lt;language&gt;English&lt;/language&gt;
+    &lt;rating&gt;TV-MA&lt;/rating&gt;
+    &lt;imdb_rating&gt;9.2&lt;/imdb_rating&gt;
+    &lt;description&gt;Nine noble families fight for control over the lands of Westeros, while an ancient enemy returns after being dormant for millennia.&lt;/description&gt;
+    &lt;tags&gt;fantasy&lt;/tags&gt;
+    &lt;tags&gt;dragons&lt;/tags&gt;
+    &lt;tags&gt;epic&lt;/tags&gt;
+    &lt;tags&gt;george-rr-martin&lt;/tags&gt;
+  &lt;/show&gt;
+  &lt;show&gt;
+    &lt;id&gt;netflix-001&lt;/id&gt;
+    &lt;title&gt;Stranger Things&lt;/title&gt;
+    &lt;platform&gt;Netflix&lt;/platform&gt;
+    &lt;genres&gt;Sci-Fi&lt;/genres&gt;
+    &lt;genres&gt;Horror&lt;/genres&gt;
+    &lt;genres&gt;Drama&lt;/genres&gt;
+    &lt;release_year&gt;2016&lt;/release_year&gt;
+    &lt;end_year&gt;2025&lt;/end_year&gt;
+    &lt;status&gt;Ended&lt;/status&gt;
+    &lt;seasons&gt;5&lt;/seasons&gt;
+    &lt;episodes&gt;42&lt;/episodes&gt;
+    &lt;creators&gt;Matt Duffer&lt;/creators&gt;
+    &lt;creators&gt;Ross Duffer&lt;/creators&gt;
+    &lt;cast&gt;Millie Bobby Brown&lt;/cast&gt;
+    &lt;cast&gt;Finn Wolfhard&lt;/cast&gt;
+    &lt;cast&gt;Winona Ryder&lt;/cast&gt;
+    &lt;cast&gt;David Harbour&lt;/cast&gt;
+    &lt;country&gt;USA&lt;/country&gt;
+    &lt;language&gt;English&lt;/language&gt;
+    &lt;rating&gt;TV-14&lt;/rating&gt;
+    &lt;imdb_rating&gt;8.7&lt;/imdb_rating&gt;
+    &lt;description&gt;A group of kids in 1980s Indiana uncover supernatural mysteries and government conspiracies tied to a parallel dimension.&lt;/description&gt;
+    &lt;tags&gt;80s&lt;/tags&gt;
+    &lt;tags&gt;supernatural&lt;/tags&gt;
+    &lt;tags&gt;coming-of-age&lt;/tags&gt;
+    &lt;tags&gt;monsters&lt;/tags&gt;
+  &lt;/show&gt;
+  &lt;show&gt;
+    &lt;id&gt;hulu-001&lt;/id&gt;
+    &lt;title&gt;The Handmaid&#x27;s Tale&lt;/title&gt;
+    &lt;platform&gt;Hulu&lt;/platform&gt;
+    &lt;genres&gt;Drama&lt;/genres&gt;
+    &lt;genres&gt;Sci-Fi&lt;/genres&gt;
+    &lt;genres&gt;Dystopian&lt;/genres&gt;
+    &lt;release_year&gt;2017&lt;/release_year&gt;
+    &lt;end_year&gt;2025&lt;/end_year&gt;
+    &lt;status&gt;Ended&lt;/status&gt;
+    &lt;seasons&gt;6&lt;/seasons&gt;
+    &lt;episodes&gt;66&lt;/episodes&gt;
+    &lt;creators&gt;Bruce Miller&lt;/creators&gt;
+    &lt;cast&gt;Elisabeth Moss&lt;/cast&gt;
+    &lt;cast&gt;Joseph Fiennes&lt;/cast&gt;
+    &lt;cast&gt;Yvonne Strahovski&lt;/cast&gt;
+    &lt;cast&gt;Samira Wiley&lt;/cast&gt;
+    &lt;country&gt;USA&lt;/country&gt;
+    &lt;language&gt;English&lt;/language&gt;
+    &lt;rating&gt;TV-MA&lt;/rating&gt;
+    &lt;imdb_rating&gt;8.4&lt;/imdb_rating&gt;
+    &lt;description&gt;Set in a dystopian future, a woman is forced to live as a concubine under a fundamentalist theocratic dictatorship.&lt;/description&gt;
+    &lt;tags&gt;dystopian&lt;/tags&gt;
+    &lt;tags&gt;feminist&lt;/tags&gt;
+    &lt;tags&gt;atwood&lt;/tags&gt;
+    &lt;tags&gt;theocracy&lt;/tags&gt;
+  &lt;/show&gt;
+  &lt;show&gt;
+    &lt;id&gt;disney-001&lt;/id&gt;
+    &lt;title&gt;The Mandalorian&lt;/title&gt;
+    &lt;platform&gt;Disney+&lt;/platform&gt;
+    &lt;genres&gt;Sci-Fi&lt;/genres&gt;
+    &lt;genres&gt;Action&lt;/genres&gt;
+    &lt;genres&gt;Adventure&lt;/genres&gt;
+    &lt;release_year&gt;2019&lt;/release_year&gt;
+    &lt;status&gt;Ongoing&lt;/status&gt;
+    &lt;seasons&gt;3&lt;/seasons&gt;
+    &lt;episodes&gt;24&lt;/episodes&gt;
+    &lt;creators&gt;Jon Favreau&lt;/creators&gt;
+    &lt;cast&gt;Pedro Pascal&lt;/cast&gt;
+    &lt;cast&gt;Carl Weathers&lt;/cast&gt;
+    &lt;cast&gt;Giancarlo Esposito&lt;/cast&gt;
+    &lt;country&gt;USA&lt;/country&gt;
+    &lt;language&gt;English&lt;/language&gt;
+    &lt;rating&gt;TV-14&lt;/rating&gt;
+    &lt;imdb_rating&gt;8.6&lt;/imdb_rating&gt;
+    &lt;description&gt;The travels of a lone bounty hunter in the outer reaches of the galaxy, far from the authority of the New Republic.&lt;/description&gt;
+    &lt;tags&gt;star-wars&lt;/tags&gt;
+    &lt;tags&gt;space-western&lt;/tags&gt;
+    &lt;tags&gt;grogu&lt;/tags&gt;
+    &lt;tags&gt;baby-yoda&lt;/tags&gt;
+  &lt;/show&gt;
+  &lt;show&gt;
+    &lt;id&gt;hbo-002&lt;/id&gt;
+    &lt;title&gt;Succession&lt;/title&gt;
+    &lt;platform&gt;HBO Max&lt;/platform&gt;
+    &lt;genres&gt;Drama&lt;/genres&gt;
+    &lt;genres&gt;Comedy&lt;/genres&gt;
+    &lt;release_year&gt;2018&lt;/release_year&gt;
+    &lt;end_year&gt;2023&lt;/end_year&gt;
+    &lt;status&gt;Ended&lt;/status&gt;
+    &lt;seasons&gt;4&lt;/seasons&gt;
+    &lt;episodes&gt;39&lt;/episodes&gt;
+    &lt;creators&gt;Jesse Armstrong&lt;/creators&gt;
+    &lt;cast&gt;Brian Cox&lt;/cast&gt;
+    &lt;cast&gt;Jeremy Strong&lt;/cast&gt;
+    &lt;cast&gt;Kieran Culkin&lt;/cast&gt;
+    &lt;cast&gt;Sarah Snook&lt;/cast&gt;
+    &lt;country&gt;USA&lt;/country&gt;
+    &lt;language&gt;English&lt;/language&gt;
+    &lt;rating&gt;TV-MA&lt;/rating&gt;
+    &lt;imdb_rating&gt;8.9&lt;/imdb_rating&gt;
+    &lt;description&gt;The Roy family controls the biggest media and entertainment company in the world, but their patriarch&#x27;s health is failing.&lt;/description&gt;
+    &lt;tags&gt;media&lt;/tags&gt;
+    &lt;tags&gt;family-drama&lt;/tags&gt;
+    &lt;tags&gt;satire&lt;/tags&gt;
+    &lt;tags&gt;wealth&lt;/tags&gt;
+  &lt;/show&gt;
+  &lt;show&gt;
+    &lt;id&gt;prime-001&lt;/id&gt;
+    &lt;title&gt;The Boys&lt;/title&gt;
+    &lt;platform&gt;Amazon Prime Video&lt;/platform&gt;
+    &lt;genres&gt;Action&lt;/genres&gt;
+    &lt;genres&gt;Sci-Fi&lt;/genres&gt;
+    &lt;genres&gt;Drama&lt;/genres&gt;
+    &lt;release_year&gt;2019&lt;/release_year&gt;
+    &lt;status&gt;Ongoing&lt;/status&gt;
+    &lt;seasons&gt;4&lt;/seasons&gt;
+    &lt;episodes&gt;32&lt;/episodes&gt;
+    &lt;creators&gt;Eric Kripke&lt;/creators&gt;
+    &lt;cast&gt;Karl Urban&lt;/cast&gt;
+    &lt;cast&gt;Jack Quaid&lt;/cast&gt;
+    &lt;cast&gt;Antony Starr&lt;/cast&gt;
+    &lt;cast&gt;Erin Moriarty&lt;/cast&gt;
+    &lt;country&gt;USA&lt;/country&gt;
+    &lt;language&gt;English&lt;/language&gt;
+    &lt;rating&gt;TV-MA&lt;/rating&gt;
+    &lt;imdb_rating&gt;8.7&lt;/imdb_rating&gt;
+    &lt;description&gt;A group of vigilantes set out to take down corrupt superheroes who abuse their powers.&lt;/description&gt;
+    &lt;tags&gt;superheroes&lt;/tags&gt;
+    &lt;tags&gt;satire&lt;/tags&gt;
+    &lt;tags&gt;violent&lt;/tags&gt;
+    &lt;tags&gt;comic-adaptation&lt;/tags&gt;
+  &lt;/show&gt;
+  &lt;show&gt;
+    &lt;id&gt;netflix-002&lt;/id&gt;
+    &lt;title&gt;The Crown&lt;/title&gt;
+    &lt;platform&gt;Netflix&lt;/platform&gt;
+    &lt;genres&gt;Drama&lt;/genres&gt;
+    &lt;genres&gt;Historical&lt;/genres&gt;
+    &lt;genres&gt;Biography&lt;/genres&gt;
+    &lt;release_year&gt;2016&lt;/release_year&gt;
+    &lt;end_year&gt;2023&lt;/end_year&gt;
+    &lt;status&gt;Ended&lt;/status&gt;
+    &lt;seasons&gt;6&lt;/seasons&gt;
+    &lt;episodes&gt;60&lt;/episodes&gt;
+    &lt;creators&gt;Peter Morgan&lt;/creators&gt;
+    &lt;cast&gt;Claire Foy&lt;/cast&gt;
+    &lt;cast&gt;Olivia Colman&lt;/cast&gt;
+    &lt;cast&gt;Imelda Staunton&lt;/cast&gt;
+    &lt;cast&gt;Matt Smith&lt;/cast&gt;
+    &lt;country&gt;UK&lt;/country&gt;
+    &lt;language&gt;English&lt;/language&gt;
+    &lt;rating&gt;TV-MA&lt;/rating&gt;
+    &lt;imdb_rating&gt;8.6&lt;/imdb_rating&gt;
+    &lt;description&gt;The reign of Queen Elizabeth II from her wedding in 1947 through the early 21st century.&lt;/description&gt;
+    &lt;tags&gt;royalty&lt;/tags&gt;
+    &lt;tags&gt;british&lt;/tags&gt;
+    &lt;tags&gt;period-drama&lt;/tags&gt;
+    &lt;tags&gt;politics&lt;/tags&gt;
+  &lt;/show&gt;
+  &lt;show&gt;
+    &lt;id&gt;prime-002&lt;/id&gt;
+    &lt;title&gt;The Marvelous Mrs. Maisel&lt;/title&gt;
+    &lt;platform&gt;Amazon Prime Video&lt;/platform&gt;
+    &lt;genres&gt;Comedy&lt;/genres&gt;
+    &lt;genres&gt;Drama&lt;/genres&gt;
+    &lt;genres&gt;Period&lt;/genres&gt;
+    &lt;release_year&gt;2017&lt;/release_year&gt;
+    &lt;end_year&gt;2023&lt;/end_year&gt;
+    &lt;status&gt;Ended&lt;/status&gt;
+    &lt;seasons&gt;5&lt;/seasons&gt;
+    &lt;episodes&gt;43&lt;/episodes&gt;
+    &lt;creators&gt;Amy Sherman-Palladino&lt;/creators&gt;
+    &lt;cast&gt;Rachel Brosnahan&lt;/cast&gt;
+    &lt;cast&gt;Alex Borstein&lt;/cast&gt;
+    &lt;cast&gt;Michael Zegen&lt;/cast&gt;
+    &lt;cast&gt;Tony Shalhoub&lt;/cast&gt;
+    &lt;country&gt;USA&lt;/country&gt;
+    &lt;language&gt;English&lt;/language&gt;
+    &lt;rating&gt;TV-MA&lt;/rating&gt;
+    &lt;imdb_rating&gt;8.7&lt;/imdb_rating&gt;
+    &lt;description&gt;A 1950s New York housewife discovers she has a talent for stand-up comedy.&lt;/description&gt;
+    &lt;tags&gt;50s&lt;/tags&gt;
+    &lt;tags&gt;stand-up&lt;/tags&gt;
+    &lt;tags&gt;feminist&lt;/tags&gt;
+    &lt;tags&gt;new-york&lt;/tags&gt;
+  &lt;/show&gt;
+  &lt;show&gt;
+    &lt;id&gt;hbo-003&lt;/id&gt;
+    &lt;title&gt;The Last of Us&lt;/title&gt;
+    &lt;platform&gt;HBO Max&lt;/platform&gt;
+    &lt;genres&gt;Drama&lt;/genres&gt;
+    &lt;genres&gt;Horror&lt;/genres&gt;
+    &lt;genres&gt;Sci-Fi&lt;/genres&gt;
+    &lt;release_year&gt;2023&lt;/release_year&gt;
+    &lt;status&gt;Ongoing&lt;/status&gt;
+    &lt;seasons&gt;2&lt;/seasons&gt;
+    &lt;episodes&gt;16&lt;/episodes&gt;
+    &lt;creators&gt;Craig Mazin&lt;/creators&gt;
+    &lt;creators&gt;Neil Druckmann&lt;/creators&gt;
+    &lt;cast&gt;Pedro Pascal&lt;/cast&gt;
+    &lt;cast&gt;Bella Ramsey&lt;/cast&gt;
+    &lt;cast&gt;Anna Torv&lt;/cast&gt;
+    &lt;country&gt;USA&lt;/country&gt;
+    &lt;language&gt;English&lt;/language&gt;
+    &lt;rating&gt;TV-MA&lt;/rating&gt;
+    &lt;imdb_rating&gt;8.7&lt;/imdb_rating&gt;
+    &lt;description&gt;After a global pandemic destroys civilization, a hardened survivor takes charge of a 14-year-old girl who may be humanity&#x27;s last hope.&lt;/description&gt;
+    &lt;tags&gt;post-apocalyptic&lt;/tags&gt;
+    &lt;tags&gt;zombies&lt;/tags&gt;
+    &lt;tags&gt;video-game-adaptation&lt;/tags&gt;
+    &lt;tags&gt;fungal&lt;/tags&gt;
+  &lt;/show&gt;
+  &lt;show&gt;
+    &lt;id&gt;hulu-002&lt;/id&gt;
+    &lt;title&gt;The Bear&lt;/title&gt;
+    &lt;platform&gt;Hulu&lt;/platform&gt;
+    &lt;genres&gt;Comedy&lt;/genres&gt;
+    &lt;genres&gt;Drama&lt;/genres&gt;
+    &lt;release_year&gt;2022&lt;/release_year&gt;
+    &lt;status&gt;Ongoing&lt;/status&gt;
+    &lt;seasons&gt;3&lt;/seasons&gt;
+    &lt;episodes&gt;28&lt;/episodes&gt;
+    &lt;creators&gt;Christopher Storer&lt;/creators&gt;
+    &lt;cast&gt;Jeremy Allen White&lt;/cast&gt;
+    &lt;cast&gt;Ebon Moss-Bachrach&lt;/cast&gt;
+    &lt;cast&gt;Ayo Edebiri&lt;/cast&gt;
+    &lt;country&gt;USA&lt;/country&gt;
+    &lt;language&gt;English&lt;/language&gt;
+    &lt;rating&gt;TV-MA&lt;/rating&gt;
+    &lt;imdb_rating&gt;8.6&lt;/imdb_rating&gt;
+    &lt;description&gt;A young chef from the fine dining world returns to Chicago to run his family&#x27;s sandwich shop after a heartbreaking death.&lt;/description&gt;
+    &lt;tags&gt;cooking&lt;/tags&gt;
+    &lt;tags&gt;chicago&lt;/tags&gt;
+    &lt;tags&gt;family&lt;/tags&gt;
+    &lt;tags&gt;anxiety&lt;/tags&gt;
+  &lt;/show&gt;
+  &lt;show&gt;
+    &lt;id&gt;netflix-003&lt;/id&gt;
+    &lt;title&gt;Squid Game&lt;/title&gt;
+    &lt;platform&gt;Netflix&lt;/platform&gt;
+    &lt;genres&gt;Thriller&lt;/genres&gt;
+    &lt;genres&gt;Drama&lt;/genres&gt;
+    &lt;genres&gt;Survival&lt;/genres&gt;
+    &lt;release_year&gt;2021&lt;/release_year&gt;
+    &lt;end_year&gt;2025&lt;/end_year&gt;
+    &lt;status&gt;Ended&lt;/status&gt;
+    &lt;seasons&gt;3&lt;/seasons&gt;
+    &lt;episodes&gt;22&lt;/episodes&gt;
+    &lt;creators&gt;Hwang Dong-hyuk&lt;/creators&gt;
+    &lt;cast&gt;Lee Jung-jae&lt;/cast&gt;
+    &lt;cast&gt;Park Hae-soo&lt;/cast&gt;
+    &lt;cast&gt;Wi Ha-joon&lt;/cast&gt;
+    &lt;cast&gt;HoYeon Jung&lt;/cast&gt;
+    &lt;country&gt;South Korea&lt;/country&gt;
+    &lt;language&gt;Korean&lt;/language&gt;
+    &lt;rating&gt;TV-MA&lt;/rating&gt;
+    &lt;imdb_rating&gt;8.0&lt;/imdb_rating&gt;
+    &lt;description&gt;Hundreds of cash-strapped contestants accept an invitation to compete in deadly children&#x27;s games for a tempting prize.&lt;/description&gt;
+    &lt;tags&gt;korean&lt;/tags&gt;
+    &lt;tags&gt;survival&lt;/tags&gt;
+    &lt;tags&gt;dystopian&lt;/tags&gt;
+    &lt;tags&gt;social-commentary&lt;/tags&gt;
+  &lt;/show&gt;
+  &lt;show&gt;
+    &lt;id&gt;netflix-004&lt;/id&gt;
+    &lt;title&gt;Wednesday&lt;/title&gt;
+    &lt;platform&gt;Netflix&lt;/platform&gt;
+    &lt;genres&gt;Comedy&lt;/genres&gt;
+    &lt;genres&gt;Horror&lt;/genres&gt;
+    &lt;genres&gt;Mystery&lt;/genres&gt;
+    &lt;release_year&gt;2022&lt;/release_year&gt;
+    &lt;status&gt;Ongoing&lt;/status&gt;
+    &lt;seasons&gt;2&lt;/seasons&gt;
+    &lt;episodes&gt;16&lt;/episodes&gt;
+    &lt;creators&gt;Alfred Gough&lt;/creators&gt;
+    &lt;creators&gt;Miles Millar&lt;/creators&gt;
+    &lt;cast&gt;Jenna Ortega&lt;/cast&gt;
+    &lt;cast&gt;Catherine Zeta-Jones&lt;/cast&gt;
+    &lt;cast&gt;Luis Guzmán&lt;/cast&gt;
+    &lt;cast&gt;Gwendoline Christie&lt;/cast&gt;
+    &lt;country&gt;USA&lt;/country&gt;
+    &lt;language&gt;English&lt;/language&gt;
+    &lt;rating&gt;TV-14&lt;/rating&gt;
+    &lt;imdb_rating&gt;8.1&lt;/imdb_rating&gt;
+    &lt;description&gt;Wednesday Addams navigates a supernatural boarding school while solving a murder mystery.&lt;/description&gt;
+    &lt;tags&gt;gothic&lt;/tags&gt;
+    &lt;tags&gt;teen&lt;/tags&gt;
+    &lt;tags&gt;supernatural&lt;/tags&gt;
+    &lt;tags&gt;addams-family&lt;/tags&gt;
+  &lt;/show&gt;
+&lt;/shows&gt;</code></pre></div>
+        </div>
+        <div data-format="markdown">
+        <p style="font-size:.86rem">Three shows, three Markdown documents, three tool calls:</p>
+        <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>Index each of the following three Markdown documents into the shows-auto collection, one at a time:
+
+---
+id: hbo-001
+title: Game of Thrones
+platform: HBO Max
+genres:
+  - Fantasy
+  - Drama
+  - Adventure
+release_year: 2011
+end_year: 2019
+status: Ended
+seasons: 8
+episodes: 73
+creators:
+  - David Benioff
+  - D.B. Weiss
+cast:
+  - Emilia Clarke
+  - Peter Dinklage
+  - Kit Harington
+  - Lena Headey
+country: USA
+language: English
+rating: TV-MA
+imdb_rating: 9.2
+tags:
+  - fantasy
+  - dragons
+  - epic
+  - george-rr-martin
+---
+
+# Game of Thrones
+
+Nine noble families fight for control over the lands of Westeros, while an ancient enemy returns after being dormant for millennia.
+
+---
+id: netflix-001
+title: Stranger Things
+platform: Netflix
+genres:
+  - Sci-Fi
+  - Horror
+  - Drama
+release_year: 2016
+end_year: 2025
+status: Ended
+seasons: 5
+episodes: 42
+creators:
+  - Matt Duffer
+  - Ross Duffer
+cast:
+  - Millie Bobby Brown
+  - Finn Wolfhard
+  - Winona Ryder
+  - David Harbour
+country: USA
+language: English
+rating: TV-14
+imdb_rating: 8.7
+tags:
+  - 80s
+  - supernatural
+  - coming-of-age
+  - monsters
+---
+
+# Stranger Things
+
+A group of kids in 1980s Indiana uncover supernatural mysteries and government conspiracies tied to a parallel dimension.
+
+---
+id: hulu-001
+title: The Handmaid&#x27;s Tale
+platform: Hulu
+genres:
+  - Drama
+  - Sci-Fi
+  - Dystopian
+release_year: 2017
+end_year: 2025
+status: Ended
+seasons: 6
+episodes: 66
+creators:
+  - Bruce Miller
+cast:
+  - Elisabeth Moss
+  - Joseph Fiennes
+  - Yvonne Strahovski
+  - Samira Wiley
+country: USA
+language: English
+rating: TV-MA
+imdb_rating: 8.4
+tags:
+  - dystopian
+  - feminist
+  - atwood
+  - theocracy
+---
+
+# The Handmaid&#x27;s Tale
+
+Set in a dystopian future, a woman is forced to live as a concubine under a fundamentalist theocratic dictatorship.</code></pre></div>
+        </div>
       </div>
     </details>
 
@@ -1264,6 +1780,15 @@ java -jar C:/path/to/solr-mcp-1.0.0-SNAPSHOT.jar</code></pre></div>
     </div>
 
     <h3>What Solr guessed</h3>
+    <p style="font-size:.86rem;color:var(--ink-2)" data-format="csv markdown">
+      The table below was captured from the JSON path. CSV and Markdown deliver the same values as
+      text; Solr's schemaless chain parses numeric-looking text before choosing a type, so expect the
+      same guesses.
+    </p>
+    <p style="font-size:.86rem;color:var(--ink-2)" data-format="xml">
+      With XML every name below carries the <code class="inline">show_</code> prefix
+      (<code class="inline">show_platform</code>, <code class="inline">show_imdb_rating</code>).
+    </p>
     <div class="tablewrap">
       <table>
         <thead>
@@ -1540,7 +2065,9 @@ docker run -d --name solr-mcp-demo -p 8983:8983 solr:9-slim solr start -c -f</co
 <section id="more" style="padding-top:1rem">
   <h2 style="font-family:var(--f-display);font-weight:400;font-size:1.9rem;margin:0 0 .3rem">Going further</h2>
   <p style="color:var(--ink-2);margin-bottom:1.5rem">
-    Everything below is optional. Open what's relevant to you.
+    Nothing below is on the numbered path. <b>When it breaks</b> is where steps 2 and 3 send
+    you if something fails; <b>Build it yourself</b> replaces the prebuilt download; the rest is
+    for after today.
   </p>
 
   <details class="panel" id="build-local">
@@ -1700,10 +2227,10 @@ docker run -d --name solr-mcp-demo -p 8983:8983 solr:9-slim solr start -c -f</co
   var STATE_KEY = "solrmcp-coc2026-state";
   var DONE_KEY = "solrmcp-coc2026-done";
 
-  var state = { os: "macos", runtime: "docker", transport: "stdio", client: "claude-code" };
+  var state = { os: "macos", runtime: "docker", transport: "stdio", format: "json", client: "claude-code" };
   try {
     var saved = JSON.parse(localStorage.getItem(STATE_KEY) || "{}");
-    ["os", "runtime", "transport", "client"].forEach(function (k) {
+    ["os", "runtime", "transport", "format", "client"].forEach(function (k) {
       if (saved[k]) state[k] = saved[k];
     });
   } catch (e) { /* first visit, or storage blocked */ }
@@ -1716,10 +2243,11 @@ docker run -d --name solr-mcp-demo -p 8983:8983 solr:9-slim solr start -c -f</co
   }
 
   function apply() {
-    document.querySelectorAll("[data-os],[data-runtime],[data-transport],[data-client]").forEach(function (el) {
+    document.querySelectorAll("[data-os],[data-runtime],[data-transport],[data-format],[data-client]").forEach(function (el) {
       var ok = matches(el, "data-os", state.os)
             && matches(el, "data-runtime", state.runtime)
             && matches(el, "data-transport", state.transport)
+            && matches(el, "data-format", state.format)
             && matches(el, "data-client", state.client);
       el.hidden = !ok;
     });
