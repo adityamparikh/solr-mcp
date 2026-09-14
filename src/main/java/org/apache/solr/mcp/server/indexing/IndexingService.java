@@ -226,8 +226,9 @@ public class IndexingService {
 					+ "Index documents from json String into Solr collection. Field names are"
 					+ " sanitized for Solr compatibility (lowercased, special characters replaced"
 					+ " with underscores); the response lists the field names as indexed")
-	public String indexJsonDocuments(@McpToolParam(description = "Solr collection to index into") String collection,
-			@McpToolParam(description = "JSON string containing documents to index") String json)
+	public String indexJsonDocuments(
+			@McpToolParam(description = "Solr collection to index into", required = true) String collection,
+			@McpToolParam(description = "JSON string containing documents to index", required = true) String json)
 			throws IOException, SolrServerException {
 		List<SolrInputDocument> schemalessDoc = indexingDocumentCreator.createSchemalessDocumentsFromJson(json);
 		int successCount = indexDocuments(collection, schemalessDoc);
@@ -301,8 +302,9 @@ public class IndexingService {
 					+ "Index documents from CSV string into Solr collection. Column names are"
 					+ " sanitized for Solr compatibility (lowercased, special characters replaced"
 					+ " with underscores); the response lists the field names as indexed")
-	public String indexCsvDocuments(@McpToolParam(description = "Solr collection to index into") String collection,
-			@McpToolParam(description = "CSV string containing documents to index") String csv)
+	public String indexCsvDocuments(
+			@McpToolParam(description = "Solr collection to index into", required = true) String collection,
+			@McpToolParam(description = "CSV string containing documents to index", required = true) String csv)
 			throws IOException, SolrServerException {
 		List<SolrInputDocument> schemalessDoc = indexingDocumentCreator.createSchemalessDocumentsFromCsv(csv);
 		int successCount = indexDocuments(collection, schemalessDoc);
@@ -401,8 +403,9 @@ public class IndexingService {
 					+ "Index documents from XML string into Solr collection. Element names are"
 					+ " sanitized for Solr compatibility (lowercased, special characters replaced"
 					+ " with underscores); the response lists the field names as indexed")
-	public String indexXmlDocuments(@McpToolParam(description = "Solr collection to index into") String collection,
-			@McpToolParam(description = "XML string containing documents to index") String xml)
+	public String indexXmlDocuments(
+			@McpToolParam(description = "Solr collection to index into", required = true) String collection,
+			@McpToolParam(description = "XML string containing documents to index", required = true) String xml)
 			throws ParserConfigurationException, SAXException, IOException, SolrServerException {
 		List<SolrInputDocument> schemalessDoc = indexingDocumentCreator.createSchemalessDocumentsFromXml(xml);
 		int successCount = indexDocuments(collection, schemalessDoc);
@@ -476,9 +479,11 @@ public class IndexingService {
 					+ "Index a document from markdown String into Solr collection, extracting front matter, title, headings, and body text. "
 					+ "Do NOT use for JSON/CSV/XML input; use index-json-documents, index-csv-documents, or index-xml-documents instead. "
 					+ "Only convert source content to markdown when there is no dedicated tool for the source format, and supply a stable 'id' in the YAML front matter when doing so.")
-	public String indexMarkdownDocuments(@McpToolParam(description = "Solr collection to index into") String collection,
+	public String indexMarkdownDocuments(
+			@McpToolParam(description = "Solr collection to index into", required = true) String collection,
 			@McpToolParam(
-					description = "Markdown string to index, optionally starting with YAML front matter") String markdown)
+					description = "Markdown string to index, optionally starting with YAML front matter",
+					required = true) String markdown)
 			throws IOException, SolrServerException {
 		List<SolrInputDocument> schemalessDoc = indexingDocumentCreator.createSchemalessDocumentsFromMarkdown(markdown);
 		int successCount = indexDocuments(collection, schemalessDoc);
@@ -679,7 +684,7 @@ public class IndexingService {
 	}
 
 	private static IndexTool resolveIndexTool(String format) {
-		String normalized = (format == null) ? "" : format.trim().toLowerCase();
+		String normalized = format.trim().toLowerCase();
 		return switch (normalized) {
 			case "json" -> new IndexTool("index-json-documents", "json");
 			case "csv" -> new IndexTool("index-csv-documents", "csv");

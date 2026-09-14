@@ -160,8 +160,6 @@ class SchemaServiceTest {
 	@Test
 	void addFields_blankCollection_throws() {
 		assertThrows(IllegalArgumentException.class,
-				() -> schemaService.addFields(null, List.of(Map.of("name", "x", "type", "string"))));
-		assertThrows(IllegalArgumentException.class,
 				() -> schemaService.addFields("", List.of(Map.of("name", "x", "type", "string"))));
 		assertThrows(IllegalArgumentException.class,
 				() -> schemaService.addFields("   ", List.of(Map.of("name", "x", "type", "string"))));
@@ -169,7 +167,6 @@ class SchemaServiceTest {
 
 	@Test
 	void addFields_emptyList_throws() {
-		assertThrows(IllegalArgumentException.class, () -> schemaService.addFields("col", null));
 		assertThrows(IllegalArgumentException.class, () -> schemaService.addFields("col", List.of()));
 	}
 
@@ -202,8 +199,6 @@ class SchemaServiceTest {
 	@Test
 	void addFieldTypes_blankCollection_throws() {
 		assertThrows(IllegalArgumentException.class,
-				() -> schemaService.addFieldTypes(null, List.of(Map.of("name", "x", "class", "solr.StrField"))));
-		assertThrows(IllegalArgumentException.class,
 				() -> schemaService.addFieldTypes("", List.of(Map.of("name", "x", "class", "solr.StrField"))));
 		assertThrows(IllegalArgumentException.class,
 				() -> schemaService.addFieldTypes("   ", List.of(Map.of("name", "x", "class", "solr.StrField"))));
@@ -211,7 +206,6 @@ class SchemaServiceTest {
 
 	@Test
 	void addFieldTypes_emptyList_throws() {
-		assertThrows(IllegalArgumentException.class, () -> schemaService.addFieldTypes("col", null));
 		assertThrows(IllegalArgumentException.class, () -> schemaService.addFieldTypes("col", List.of()));
 	}
 

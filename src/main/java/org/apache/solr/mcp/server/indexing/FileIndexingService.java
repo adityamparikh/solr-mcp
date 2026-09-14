@@ -27,6 +27,7 @@ import java.util.Locale;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.mcp.server.indexing.documentcreator.DocumentProcessingException;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springaicommunity.mcp.annotation.McpTool;
@@ -97,16 +98,18 @@ public class FileIndexingService {
 					+ "The path must be readable by the MCP server, not a URL or remote-client-only path. "
 					+ "Reuse the path for another collection. Failures can leave partially indexed data; verify counts before retrying. "
 					+ IndexingService.SCHEMA_FIRST_GUIDANCE)
-	public String indexFile(@McpToolParam(description = "Solr collection to index into") String collection,
+	public String indexFile(
+			@McpToolParam(description = "Solr collection to index into", required = true) String collection,
 			@McpToolParam(
-					description = "Local server file path, absolute or relative to its working directory; no URLs or ~ expansion") String path,
+					description = "Local server file path, absolute or relative to its working directory; no URLs or ~ expansion",
+					required = true) String path,
 			@McpToolParam(
 					description = "Optional format: json, csv, xml, markdown or md; defaults to the file extension",
-					required = false) String format) {
-		if (collection == null || collection.isBlank()) {
+					required = false) @Nullable String format) {
+		if (collection.isBlank()) {
 			throw new IllegalArgumentException("Provide a non-empty collection name.");
 		}
-		if (path == null || path.isBlank()) {
+		if (path.isBlank()) {
 			throw new IllegalArgumentException("Provide a local file path on the MCP server.");
 		}
 		Path file = resolveFile(path);
@@ -129,7 +132,7 @@ public class FileIndexingService {
 		}
 	}
 
-	private static String resolveFormat(Path file, String format) {
+	private static String resolveFormat(Path file, @Nullable String format) {
 		String name = file.getFileName().toString();
 		String selected = format == null || format.isBlank() ? name.substring(name.lastIndexOf('.') + 1) : format;
 		return switch (selected.trim().toLowerCase(Locale.ROOT)) {

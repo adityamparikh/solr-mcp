@@ -290,7 +290,8 @@ public class SearchService {
 			    }
 			""")
 	// @formatter:on
-	public SearchResponse search(@McpToolParam(description = "Solr collection to query") String collection,
+	public SearchResponse search(
+			@McpToolParam(description = "Solr collection to query", required = true) String collection,
 			@McpToolParam(
 					description = "Solr q parameter. Lucene syntax; supports local params such as"
 							+ " {!edismax qf='name author'}. If none specified defaults to \"*:*\"",
