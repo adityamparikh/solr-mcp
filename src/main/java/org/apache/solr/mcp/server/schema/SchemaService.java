@@ -314,9 +314,11 @@ public class SchemaService {
 					+ "Note: this only adds new fields; existing fields cannot be modified. "
 					+ "Solr's Schema API is transactional — if any command in the batch fails, "
 					+ "none are applied. On failure, fix the invalid field(s) and retry the whole batch.")
-	public SchemaUpdateResult addFields(@McpToolParam(description = "Solr collection name") String collection,
+	public SchemaUpdateResult addFields(
+			@McpToolParam(description = "Solr collection name", required = true) String collection,
 			@McpToolParam(
-					description = "List of field definitions (Solr add-field JSON shape)") List<Map<String, Object>> fields)
+					description = "List of field definitions (Solr add-field JSON shape)",
+					required = true) List<Map<String, Object>> fields)
 			throws SolrServerException, IOException {
 		requireCollection(collection);
 		requireNonEmpty(fields, "fields");
@@ -364,9 +366,11 @@ public class SchemaService {
 					+ "and queryAnalyzer without it. "
 					+ "After adding a type, use add-fields to create fields of that type. "
 					+ "Solr's Schema API is transactional — if any command in the batch fails, none are applied.")
-	public SchemaUpdateResult addFieldTypes(@McpToolParam(description = "Solr collection name") String collection,
+	public SchemaUpdateResult addFieldTypes(
+			@McpToolParam(description = "Solr collection name", required = true) String collection,
 			@McpToolParam(
-					description = "List of field type definitions (Solr add-field-type JSON shape)") List<Map<String, Object>> fieldTypes)
+					description = "List of field type definitions (Solr add-field-type JSON shape)",
+					required = true) List<Map<String, Object>> fieldTypes)
 			throws SolrServerException, IOException {
 		requireCollection(collection);
 		requireNonEmpty(fieldTypes, "fieldTypes");
@@ -488,13 +492,13 @@ public class SchemaService {
 	}
 
 	private static void requireCollection(String collection) {
-		if (collection == null || collection.isBlank()) {
+		if (collection.isBlank()) {
 			throw new IllegalArgumentException("Collection name must not be blank");
 		}
 	}
 
 	private static void requireNonEmpty(List<?> list, String name) {
-		if (list == null || list.isEmpty()) {
+		if (list.isEmpty()) {
 			throw new IllegalArgumentException(name + " must not be empty");
 		}
 	}

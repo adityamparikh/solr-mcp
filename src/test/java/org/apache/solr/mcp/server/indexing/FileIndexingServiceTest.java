@@ -141,7 +141,6 @@ class FileIndexingServiceTest {
 			assertNull(error.getCause());
 			assertFalse(error.getMessage().contains(tempDir.toString()));
 		}
-		assertThrows(IllegalArgumentException.class, () -> fileIndexingService.indexFile("shows", null, null));
 		assertThrows(IllegalArgumentException.class, () -> fileIndexingService.indexFile(" ", "shows.json", null));
 		verifyNoInteractions(solrClient);
 	}

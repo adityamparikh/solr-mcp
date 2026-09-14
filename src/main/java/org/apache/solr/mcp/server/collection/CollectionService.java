@@ -522,7 +522,7 @@ public class CollectionService {
 					+ " handlerStats are always null because the /admin/mbeans endpoint was removed"
 					+ " from Solr; this is expected and not an error.")
 	public SolrMetrics getCollectionStats(
-			@McpToolParam(description = "Solr collection to get stats/metrics for") String collection)
+			@McpToolParam(description = "Solr collection to get stats/metrics for", required = true) String collection)
 			throws SolrServerException, IOException {
 		// Extract actual collection name from shard name if needed
 		String actualCollection = extractCollectionName(collection);
@@ -1073,7 +1073,8 @@ public class CollectionService {
 			name = "check-health",
 			annotations = @McpTool.McpAnnotations(readOnlyHint = true),
 			description = "Check health of a Solr collection")
-	public SolrHealthStatus checkHealth(@McpToolParam(description = "Solr collection") String collection) {
+	public SolrHealthStatus checkHealth(
+			@McpToolParam(description = "Solr collection", required = true) String collection) {
 		String actualCollection = extractCollectionName(collection);
 		try {
 			// Ping Solr
@@ -1131,7 +1132,7 @@ public class CollectionService {
 			description = "Create a new Solr collection. "
 					+ "configSet defaults to _default, numShards and replicationFactor default to 1.")
 	public CollectionCreationResult createCollection(
-			@McpToolParam(description = "Name of the collection to create") String name,
+			@McpToolParam(description = "Name of the collection to create", required = true) String name,
 			@McpToolParam(
 					description = "Configset name. Defaults to _default.",
 					required = false) @Nullable String configSet,
@@ -1143,7 +1144,7 @@ public class CollectionService {
 					required = false) @Nullable Integer replicationFactor)
 			throws SolrServerException, IOException {
 
-		if (name == null || name.isBlank()) {
+		if (name.isBlank()) {
 			throw new IllegalArgumentException(BLANK_COLLECTION_NAME_ERROR);
 		}
 
