@@ -1,7 +1,8 @@
 # Spec: `index-url` — stream documents into Solr from an http(s) URL
 
 **Date:** 2026-09-15
-**Status:** ready to implement
+**Status:** implemented on branch `feat/index-url` (2026-09-15); this document is
+kept as the record of the decisions and their reasons
 **Tracking issue:** https://github.com/apache/solr-mcp/issues/208
 **Base:** branch `feat/file-ingest-required-params`, which already contains the
 streaming spine and the `index-file` tool this spec builds on (§2).
@@ -508,7 +509,23 @@ a critical property regardless of edits 2 to 8.
    consumer. The PR description must cite #194 and #197 and state that D1 and D3
    revise the position recorded on #194.
 
-Both are independent of the open PRs #196, #202, #203, #205 and #207.
+**Interaction with open PRs (checked 2026-09-15).** None of the open PRs need to be
+modified for this work, but two of them change what PR 2 is built on:
+
+- **#205** (forward CSV and XML to Solr's own update handlers) **deletes**
+  `CsvDocumentCreator` and `XmlDocumentCreator`, which is where the streaming
+  spine's CSV and XML `stream(Reader, Consumer)` implementations live. If #205
+  merges first, the CSV/XML half of the spine is gone and `index-url` /
+  `index-file` should instead hand the raw body to Solr's `/update` handler through
+  a `ContentStreamUpdateRequest` (which accepts a stream, so streaming is
+  preserved and simpler). If PR 2 merges first, #205 must be rebased over the
+  spine. Whichever lands second carries the merge. This is a maintainer ordering
+  decision, not a code change to #205.
+- **#196** (soft commit instead of hard commit) changes the `commit` call the spine
+  makes at the end of a stream. Textual conflict only; the stall test's own
+  explicit commit is unaffected.
+- **#202**, **#203** and **#207** overlap on `README.md`, `IndexingService.java`
+  and `MarkdownDocumentCreator.java` textually; ordinary rebase conflicts.
 
 **Implementation order within PR 2:** §4.7 native spike -> renames -> `UrlTargetPolicy`
 + test -> `IdleTimeoutInputStream` + test -> `UrlFetcher` -> `UrlIndexingService` +
