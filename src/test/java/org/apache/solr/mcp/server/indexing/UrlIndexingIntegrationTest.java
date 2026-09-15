@@ -1,0 +1,231 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.solr.mcp.server.indexing;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import org.apache.solr.client.solrj.SolrClient;
+import org.apache.solr.client.solrj.request.CollectionAdminRequest;
+import org.apache.solr.client.solrj.request.SolrQuery;
+import org.apache.solr.mcp.server.TestcontainersConfiguration;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.test.context.TestPropertySource;
+import org.testcontainers.junit.jupiter.Testcontainers;
+
+/**
+ * Drives {@code index-url} end to end: a JDK HTTP server on an ephemeral
+ * loopback port serves the documents, the real service streams them into a real
+ * Solr. The idle timeout is shortened so the stall case runs in seconds.
+ */
+@SpringBootTest
+@Import(TestcontainersConfiguration.class)
+@TestPropertySource(properties = "solr.index-url.idle-timeout=2s")
+@Tag("integration")
+@Testcontainers(disabledWithoutDocker = true)
+class UrlIndexingIntegrationTest {
+
+	private static final int BIG_ROWS = 200_000;
+	private static final int STALL_ROWS = 1_200;
+
+	private static HttpServer server;
+	private static ExecutorService handlers;
+	private static String base;
+
+	@Autowired
+	private UrlIndexingService service;
+
+	@Autowired
+	private SolrClient solrClient;
+
+	@BeforeAll
+	static void startServer() throws IOException {
+		byte[] showsJson = Files.readAllBytes(Path.of("src/test/resources/shows.json"));
+		server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		// handlers must not share the dispatcher thread: the stall handler sleeps
+		handlers = Executors.newCachedThreadPool();
+		server.setExecutor(handlers);
+		server.createContext("/shows.json", ex -> respond(ex, 200, "text/plain; charset=utf-8", showsJson));
+		server.createContext("/shows.csv", ex -> respond(ex, 200, "text/plain", csv("csv", 50)));
+		server.createContext("/shows.xml", ex -> respond(ex, 200, "text/plain", xml(40)));
+		server.createContext("/shows.md", ex -> respond(ex, 200, "text/plain", "# One show\n\nA body.\n".getBytes()));
+		server.createContext("/export.csv", ex -> respond(ex, 200, "text/plain", csv("export", 30)));
+		server.createContext("/data", ex -> respond(ex, 200, "application/json", showsJson));
+		server.createContext("/data.txt", ex -> respond(ex, 200, "text/plain", csv("txt", 5)));
+		server.createContext("/page", ex -> respond(ex, 200, "text/html", "<html><body>id,x</body></html>".getBytes()));
+		server.createContext("/missing", ex -> respond(ex, 404, "text/plain", "404: Not Found".getBytes()));
+		server.createContext("/moved", ex -> {
+			ex.getResponseHeaders().add("Location", base + "/shows.json");
+			ex.sendResponseHeaders(302, -1);
+			ex.close();
+		});
+		server.createContext("/big.csv", ex -> streamCsv(ex, "big", BIG_ROWS, 0));
+		server.createContext("/stall", ex -> streamCsv(ex, "stall", STALL_ROWS, 10_000));
+		server.start();
+		base = "http://127.0.0.1:" + server.getAddress().getPort();
+	}
+
+	@AfterAll
+	static void stopServer() {
+		server.stop(0);
+		handlers.shutdownNow();
+	}
+
+	@Test
+	void indexesJsonServedAsTextPlainByExtension() throws Exception {
+		String collection = newCollection("json");
+		String summary = service.indexUrl(collection, base + "/shows.json", null);
+		assertTrue(summary.contains("61 of 61"), summary);
+		assertFalse(summary.contains("Stranger Things"), "payload leaked into the summary");
+		assertEquals(61, count(collection));
+	}
+
+	@Test
+	void indexesCsvXmlAndMarkdown() throws Exception {
+		String csv = newCollection("csv");
+		assertTrue(service.indexUrl(csv, base + "/shows.csv", null).contains("50 of 50"));
+		assertEquals(50, count(csv));
+
+		String xml = newCollection("xml");
+		assertTrue(service.indexUrl(xml, base + "/shows.xml", null).contains("40 of 40"));
+		assertEquals(40, count(xml));
+
+		String md = newCollection("md");
+		assertTrue(service.indexUrl(md, base + "/shows.md", null).contains("1 of 1"));
+		assertEquals(1, count(md));
+	}
+
+	@Test
+	void resolvesFormatFromExtensionBeforeQueryStringAndFromMediaTypeWithoutExtension() throws Exception {
+		String byExtension = newCollection("query");
+		assertTrue(service.indexUrl(byExtension, base + "/export.csv?token=abc", null).contains("30 of 30"));
+		assertEquals(30, count(byExtension));
+
+		String byMediaType = newCollection("mediatype");
+		assertTrue(service.indexUrl(byMediaType, base + "/data", null).contains("61 of 61"));
+		assertEquals(61, count(byMediaType));
+	}
+
+	@Test
+	void followsARedirect() throws Exception {
+		String collection = newCollection("redirect");
+		assertTrue(service.indexUrl(collection, base + "/moved", null).contains("61 of 61"));
+	}
+
+	@Test
+	void textPlainWithoutExtensionHtmlAndNotFoundIndexNothing() throws Exception {
+		String collection = newCollection("errors");
+		var plain = assertThrows(IllegalArgumentException.class,
+				() -> service.indexUrl(collection, base + "/data.txt", null));
+		assertEquals(UrlIndexingService.FORMAT_UNRESOLVED, plain.getMessage());
+		var html = assertThrows(IllegalArgumentException.class,
+				() -> service.indexUrl(collection, base + "/page", null));
+		assertEquals(UrlIndexingService.FORMAT_UNRESOLVED + UrlIndexingService.HTML_NOT_SUPPORTED, html.getMessage());
+		var missing = assertThrows(IllegalArgumentException.class,
+				() -> service.indexUrl(collection, base + "/missing", null));
+		assertTrue(missing.getMessage().startsWith("The URL returned HTTP 404"), missing.getMessage());
+		solrClient.commit(collection);
+		assertEquals(0, count(collection));
+	}
+
+	@Test
+	void streamsALargeBodyWithoutBufferingIt() throws Exception {
+		String collection = newCollection("big");
+		String summary = service.indexUrl(collection, base + "/big.csv", null);
+		assertTrue(summary.contains(BIG_ROWS + " of " + BIG_ROWS), summary);
+		assertEquals(BIG_ROWS, count(collection));
+	}
+
+	@Test
+	void aStalledBodyFailsAndLeavesOnlyTheBatchesAlreadyAdded() throws Exception {
+		String collection = newCollection("stall");
+		var e = assertThrows(IllegalStateException.class, () -> service.indexUrl(collection, base + "/stall", null));
+		assertEquals(UrlIndexingService.BODY_FAILED, e.getMessage());
+		// the spine never committed: make the added batch visible to prove what landed
+		solrClient.commit(collection);
+		assertEquals(1000, count(collection), "exactly one full batch of 1,000 should have been added");
+	}
+
+	private String newCollection(String suffix) throws Exception {
+		String name = "url_" + suffix + "_" + System.nanoTime();
+		CollectionAdminRequest.createCollection(name, "_default", 1, 1).process(solrClient);
+		return name;
+	}
+
+	private long count(String collection) throws Exception {
+		return solrClient.query(collection, new SolrQuery("*:*").setRows(0)).getResults().getNumFound();
+	}
+
+	private static void respond(HttpExchange exchange, int status, String contentType, byte[] body) throws IOException {
+		exchange.getResponseHeaders().add("Content-Type", contentType);
+		exchange.sendResponseHeaders(status, body.length);
+		try (OutputStream out = exchange.getResponseBody()) {
+			out.write(body);
+		}
+	}
+
+	/** Chunked CSV generated row by row; optionally hangs after the last row. */
+	private static void streamCsv(HttpExchange exchange, String prefix, int rows, long hangMillis) throws IOException {
+		exchange.getResponseHeaders().add("Content-Type", "text/csv");
+		exchange.sendResponseHeaders(200, 0);
+		try (OutputStream out = exchange.getResponseBody()) {
+			out.write("id,n\n".getBytes(StandardCharsets.UTF_8));
+			for (int i = 0; i < rows; i++) {
+				out.write((prefix + "-" + i + "," + i + "\n").getBytes(StandardCharsets.UTF_8));
+			}
+			out.flush();
+			if (hangMillis > 0) {
+				Thread.sleep(hangMillis);
+			}
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+		} catch (IOException ignored) {
+			// the client aborted the download, which is what the stall test expects
+		}
+	}
+
+	private static byte[] csv(String prefix, int rows) {
+		var sb = new StringBuilder("id,title\n");
+		for (int i = 0; i < rows; i++) {
+			sb.append(prefix).append('-').append(i).append(",Title ").append(i).append('\n');
+		}
+		return sb.toString().getBytes(StandardCharsets.UTF_8);
+	}
+
+	private static byte[] xml(int rows) {
+		var sb = new StringBuilder("<shows>");
+		for (int i = 0; i < rows; i++) {
+			sb.append("<show><id>xml-").append(i).append("</id><title>Title ").append(i).append("</title></show>");
+		}
+		return sb.append("</shows>").toString().getBytes(StandardCharsets.UTF_8);
+	}
+}

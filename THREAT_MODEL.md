@@ -222,13 +222,15 @@ reaching the backend Solr directly, bypassing this server, is out of model (§3)
 | `OAUTH2_ISSUER_URI` | empty (placeholder) | With HTTP security on and no issuer, the chain still returns 401/403 on every non-permitted endpoint (locked down, no token validator). A real issuer enables JWT signature/issuer/exp/**audience** validation. | Q-httpsec |
 | `MCP_CORS_ALLOWED_ORIGINS` | MCP Inspector localhost proxy | Explicit CORS allowlist; wildcard-with-credentials is rejected by construction (`setAllowedOrigins`, not patterns). | *(documented)* |
 | `SOLR_USERNAME` / `SOLR_PASSWORD` | unset | When both set, static HTTP Basic Auth to backend Solr on every request; when unset, unauthenticated backend calls. | Q-backendcreds |
+| `SOLR_INDEX_URL_IDLE_TIMEOUT` | `30s` | Aborts an `index-url` body that stops delivering bytes, bounding how long a remote endpoint can hold a tool call open. The connect (`10s`) and response-header (`60s`) timeouts are operational, not security-relevant. | *(documented)* |
+| `SOLR_INDEX_URL_MAX_BYTES` | `0` (unlimited) | Caps how much a single `index-url` call will pull from a remote endpoint; unlimited by default to match `index-file`'s no-size-cap posture. | *(documented)* |
 
 **How HTTP mode enforces auth** *(maintainer — Q-transport.)*: the transport
 is streamable HTTP running in **stateless** mode
 (`spring.ai.mcp.server.protocol=stateless`), so there is no sampling, progress
 or elicitation channel and no per-request context feature. `/mcp` is
 `permitAll()` at the filter-chain level; authentication is enforced instead by
-`@PreAuthorize("isAuthenticated()")` on **every** MCP entry point — all 11
+`@PreAuthorize("isAuthenticated()")` on **every** MCP entry point — all 14
 tools, both resources, every prompt and completion handler — following the
 spring-ai-community/mcp-security "secured tools" pattern. A finding that reads
 `permitAll()` on `/mcp` as an authentication bypass without checking the
@@ -317,11 +319,14 @@ Two adversaries are in scope; several are explicitly not.
    high. *(documented — docs/security/stdio.md; `application-stdio.properties`.)*
 5. **Backend credentials are startup config, not caller input.** `SOLR_URL` and
    the optional Basic-Auth credentials are read once from the environment and are
-   never taken from a tool argument, so the AI client cannot repoint the server
-   or inject a target URL. *Violation:* a tool argument alters the backend
-   target or credential. *Severity:* critical (SSRF/credential-redirect if
-   broken). *(documented — docs/security/stdio.md & http.md; `SolrConfig`,
-   `SolrConfigurationProperties`.)*
+   never taken from a tool argument, so the AI client cannot repoint the server's
+   **Solr backend** or its credentials. *Violation:* a tool argument alters the
+   Solr backend target or a credential. *Severity:* critical
+   (SSRF/credential-redirect if broken). `index-url` performs an outbound GET to
+   a caller-supplied `http(s)` URL; that is a §9 disclaimed property, not a
+   backend target. It never carries credentials or caller-supplied headers.
+   *(documented — docs/security/stdio.md & http.md; `SolrConfig`,
+   `SolrConfigurationProperties`, `UrlFetcher`.)*
 6. **XML indexing is XXE-hardened.** `XmlDocumentCreator` builds a
    `DocumentBuilderFactory` with secure processing on, DOCTYPE disallowed,
    external general/parameter entities off, XInclude off, entity-expansion off.
@@ -337,6 +342,17 @@ Two adversaries are in scope; several are explicitly not.
 
 ## §9 Security properties the project does *not* provide
 
+- **It does not restrict where `index-url` may fetch from.** The server issues
+  an outbound `http(s)` GET to any address a caller names that the server
+  process can reach, including loopback and RFC1918. Link-local and
+  cloud-metadata addresses (`169.254.0.0/16`, `fe80::/10`, `fd00:ec2::254`) are
+  refused on every redirect hop; nothing else is. There is no allow-list. The
+  fetch carries no credentials or caller headers, and an https→http redirect is
+  refused. The refusal checks the addresses the host resolves to *before* the
+  JDK client connects, so a DNS answer that changes between the check and the
+  connect (DNS rebinding) can bypass it; the JDK client offers no way to pin the
+  resolved address without breaking TLS, so this gap is accepted and documented
+  rather than closed. *(documented — `UrlTargetPolicy`, `UrlFetcher`.)*
 - **It does not defend against prompt injection / tool poisoning via Solr
   content.** Search results, schema, and stats returned by a tool flow **back
   into the model's context**. A document indexed into the backend Solr (by
@@ -435,6 +451,9 @@ Two adversaries are in scope; several are explicitly not.
 - **Wiring `SOLR_URL` (or credentials) from user/tool input** instead of
   deployer environment — would convert the server into an SSRF/credential-relay
   primitive. Explicitly forbidden. *(documented.)*
+- **Running the HTTP transport on a network with reachable internal services**
+  that you would not expose to every authenticated MCP caller — `index-url` lets
+  such a caller fetch from them (§9). *(documented — docs/security/http.md.)*
 - **Indexing untrusted documents into a Solr that the same MCP server reads
   back to the model** — creates a stored-prompt-injection loop.
 - **Sharing one MCP server (and its one backend credential) across mutually
@@ -457,10 +476,17 @@ Two adversaries are in scope; several are explicitly not.
 - **"XXE in XML indexing."** The `DocumentBuilderFactory` is hardened (DOCTYPE
   disallowed, external entities off). `KNOWN-NON-FINDING`. *(documented —
   `XmlDocumentCreator`.)*
-- **"`SOLR_URL` allows SSRF."** It is deployer-only startup config, never taken
-  from a tool argument; an SSRF report requires the operator to have violated the
-  documented contract. `OUT-OF-MODEL` (operator config) / `BY-DESIGN`.
-  *(documented.)*
+- **"`SOLR_URL` allows SSRF."** The *Solr* target is deployer-only startup
+  config, never taken from a tool argument; an SSRF report requires the operator
+  to have violated the documented contract. `OUT-OF-MODEL` (operator config) /
+  `BY-DESIGN`. *(documented.)*
+- **"`index-url` allows SSRF."** `BY-DESIGN`: the tool's purpose is to fetch a
+  caller-named URL, and the boundary is the network the server process can
+  reach, parallel to `index-file`'s OS-permissions boundary. Link-local and
+  cloud-metadata addresses are refused. A report is `VALID` only if it shows a
+  credential or caller header being forwarded, a refused address being reached
+  other than through DNS rebinding (a documented §9 gap), or an https→http
+  downgrade being followed. *(documented — §9, §12.)*
 - **"Solr query injection via the `search` tool."** Expressing arbitrary Solr
   queries is the feature; the blast radius is the backend Solr's, governed by
   apache/solr's model. Route Solr-side query-parser exposure there. PRs #122
@@ -489,8 +515,12 @@ Two adversaries are in scope; several are explicitly not.
 - Adding a **destructive** tool (delete-collection, delete-by-query, schema
   field deletion, config API) — today the tool set is read/additive-only, which
   materially bounds the blast radius.
-- Allowing any **backend-target or credential** value to originate from a tool
-  argument or per-request input (would open SSRF/credential-relay).
+- Allowing a **credential** to originate from a tool argument or per-request
+  input (would open credential-relay). *The backend-target half of this
+  condition was exercised deliberately on 2026-09-15 by `index-url`
+  ([#208](https://github.com/apache/solr-mcp/issues/208)): a caller-supplied
+  fetch URL is now a §9 disclaimed property, and §8.5 was narrowed to the Solr
+  backend and its credentials.*
 - Adding **per-caller identity passthrough** or an authorization layer over Solr
   collections/actions (would add new §8 properties).
 - **Supporting more than one user per instance.** The one-instance-per-user
@@ -509,13 +539,13 @@ Two adversaries are in scope; several are explicitly not.
 
 | Disposition | Meaning | Licensed by |
 | --- | --- | --- |
-| `VALID` | A §8 property breaks via an in-scope adversary (auth bypass, wrong-audience token accepted, CORS wildcard+credentials, network listener in STDIO, tool-arg repoints backend, XXE in XML indexing, dishonest tool hint). | §8, §6, §7 |
+| `VALID` | A §8 property breaks via an in-scope adversary (auth bypass, wrong-audience token accepted, CORS wildcard+credentials, network listener in STDIO, tool-arg repoints the Solr backend or forwards a credential, XXE in XML indexing, dishonest tool hint). | §8, §6, §7 |
 | `VALID-HARDENING` | No §8 break, but a §11 misuse is made too easy (e.g. admin tools exposed with no opt-out); fixed at maintainer discretion. Per-tool / read-only-subset proposals route to [#66](https://github.com/apache/solr-mcp/issues/66). | §11 |
 | `OUT-OF-MODEL: trusted-input` | Requires control of deployer config (`SOLR_URL`, credentials, issuer, CORS list). | §5/§6/§10 |
 | `OUT-OF-MODEL: adversary-not-in-scope` | Requires owning the client's stdin (STDIO), a maliciously-connected client, or direct backend access. | §7 |
 | `OUT-OF-MODEL: non-default-build` | Only manifests with `HTTP_SECURITY_ENABLED=false` or an otherwise discouraged toggle. | §5a |
 | `OUT-OF-MODEL: unsupported-component` | Lands in the `docker compose`/sample dev stack. | §3 |
-| `BY-DESIGN: property-disclaimed` | Concerns a §9 property (prompt injection via Solr content, no per-user authz, Solr query expressiveness, backend-hardening, resource bounds). | §9 |
+| `BY-DESIGN: property-disclaimed` | Concerns a §9 property (prompt injection via Solr content, no per-user authz, Solr query expressiveness, backend-hardening, resource bounds, `index-url` fetch target). | §9 |
 | `KNOWN-NON-FINDING` | Matches a §11a pattern. | §11a |
 | `MODEL-GAP` | Cannot be routed to any of the above. | triggers §12 |
 

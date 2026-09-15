@@ -101,6 +101,36 @@ class McpClientStdioIntegrationTest extends McpClientIntegrationTestBase {
 
 	@Test
 	@Order(2)
+	void advertisesBothUrlAndLocalFileTools() {
+		var names = mcpClient.listTools().tools().stream().map(tool -> tool.name()).toList();
+		assertTrue(names.contains("index-url"), "index-url missing under stdio");
+		assertTrue(names.contains("index-file"), "index-file missing under stdio");
+	}
+
+	@Test
+	@Order(42)
+	void indexesFromAUrlThroughStdioMcp() throws Exception {
+		var server = serveShowsJson();
+		try {
+			String collection = "shows-url-copy";
+			assertNotError(mcpClient.callTool(new CallToolRequest("create-collection", Map.of("name", collection))));
+			var indexed = mcpClient.callTool(
+					new CallToolRequest("index-url", Map.of("collection", collection, "url", showsJsonUrl(server))));
+			assertNotError(indexed);
+			assertTrue(extractText(indexed).contains("61 of 61"), extractText(indexed));
+			var searched = mcpClient.callTool(
+					new CallToolRequest("search", Map.of("collection", collection, "query", "*:*", "rows", 0)));
+			assertNotError(searched);
+			Map<String, Object> response = OBJECT_MAPPER.readValue(extractText(searched), new TypeReference<>() {
+			});
+			assertEquals(SHOWS_DOC_COUNT, getNumFound(response));
+		} finally {
+			server.stop(0);
+		}
+	}
+
+	@Test
+	@Order(2)
 	void advertisesLocalFileToolWithOptionalFormatAndWriteHints() {
 		var tool = mcpClient.listTools().tools().stream().filter(item -> item.name().equals("index-file")).findFirst()
 				.orElseThrow();

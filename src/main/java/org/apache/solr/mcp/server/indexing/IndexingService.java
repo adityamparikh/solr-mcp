@@ -750,12 +750,14 @@ public class IndexingService {
 				%s
 
 				3. Index the documents.
-				   - For JSON, CSV, XML or Markdown saved on the local STDIO server, prefer `index-file`
-				     with `collection` and `path`; optionally override the detected `format`. Use an absolute
-				     server-side path (a container path when using Docker). Download URLs client-side,
-				     then reuse the path rather than re-emitting the payload. HTTP has no file tool.
+				   - For JSON, CSV, XML or Markdown reachable at an http(s) URL, prefer `index-url`
+				     with `collection` and `url`; optionally override the detected `format`. The URL is
+				     fetched by the MCP server, so it must be reachable from the server's network.
+				   - For a file saved on the local STDIO server, prefer `index-file` with `collection`
+				     and `path` (absolute server-side path; a container path when using Docker).
+				     `index-file` is not available over HTTP.
+				   - Use one path only; do not also send inline data after a successful file or URL call.
 				   - Otherwise, call `%s` with `collection=%s` and `%s=<the document payload>`.
-				     Choose one ingestion path; do not also send inline data after a successful file call.
 				   - The tool batches internally and commits at the end. The return value is the count
 				     of successfully indexed documents.
 				   - On error, read the message carefully: an "unknown field" error means the schema is

@@ -92,9 +92,10 @@ public class FileIndexingService {
 			name = "index-file",
 			annotations = @McpTool.McpAnnotations(idempotentHint = true),
 			description = "Index a local UTF-8 JSON, CSV, XML or Markdown file without sending its contents through the model. "
-					+ "Available only in local STDIO mode. No ingest-root setting or file-size cap. "
+					+ "Available only in local STDIO mode; for remote sources use index-url. "
+					+ "No ingest-root setting or file-size cap. "
 					+ "Structured records stream in batches; Markdown remains one document. "
-					+ "The path must be readable by the MCP server, not a URL or remote-client-only path. "
+					+ "The path must be readable by the MCP server, not a remote-client-only path; for URLs use index-url. "
 					+ "Reuse the path for another collection. Failures can leave partially indexed data; verify counts before retrying. "
 					+ IndexingService.SCHEMA_FIRST_GUIDANCE)
 	public String indexFile(

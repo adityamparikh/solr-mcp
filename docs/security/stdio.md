@@ -27,6 +27,11 @@ that launched the process. No code changes are required for STDIO security.
   MCP client.
 - **Treat `SOLR_URL` as deployer-controlled config**, not user-controlled input.
   It is read once at startup. Never wire it from an MCP tool argument.
+- **`index-url` is the one tool that makes an outbound request to a
+  caller-supplied address.** It sends no credentials and no caller headers, and it
+  refuses link-local and cloud-metadata addresses; everything else the server
+  process can reach is allowed, which under STDIO means the launching user's own
+  machine and network, the same boundary `index-file` has for the filesystem.
 - **Scope the Solr instance.** STDIO mode delegates Solr-side authorization to
   Solr itself (Basic Auth, mTLS, network policy). Point at a Solr that the
   launching user is already authorized to use.

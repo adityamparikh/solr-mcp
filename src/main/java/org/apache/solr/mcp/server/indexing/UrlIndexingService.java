@@ -35,6 +35,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springaicommunity.mcp.annotation.McpTool;
 import org.springaicommunity.mcp.annotation.McpToolParam;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 
@@ -77,6 +78,7 @@ public class UrlIndexingService {
 	 * @param properties
 	 *            fetch limits
 	 */
+	@Autowired
 	public UrlIndexingService(IndexingService indexingService, UrlIndexingProperties properties) {
 		this(indexingService, properties,
 				new UrlFetcher(HttpClient.newBuilder().connectTimeout(properties.connectTimeout())
@@ -166,6 +168,12 @@ public class UrlIndexingService {
 		try (var reader = new BufferedReader(new InputStreamReader(in, fetched.charset()))) {
 			return indexingService.indexStreamedDocuments(collection, reader, format);
 		} catch (DocumentProcessingException e) {
+			if (causedByIo(e)) {
+				// the parsers wrap a failed read in their own exception; a stalled or
+				// capped body is a transport problem, not a syntax problem
+				logger.debug("URL body read failed inside the parser", e);
+				throw new IllegalStateException(BODY_FAILED);
+			}
 			logger.debug("Could not parse URL content for indexing", e);
 			throw new IllegalArgumentException("Cannot parse the URL content as " + format
 					+ ". Check its syntax and format. Some documents may already be indexed; verify the collection "
@@ -177,6 +185,15 @@ public class UrlIndexingService {
 			logger.debug("URL body read failed during indexing", e);
 			throw new IllegalStateException(BODY_FAILED);
 		}
+	}
+
+	private static boolean causedByIo(Throwable e) {
+		for (Throwable cause = e.getCause(); cause != null && cause != cause.getCause(); cause = cause.getCause()) {
+			if (cause instanceof IOException) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private static URI parse(String url) {

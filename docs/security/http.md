@@ -124,6 +124,14 @@ exists for browser-based tooling.
 - `http.security.enabled=false` on a network-reachable deployment.
 - Passing `SOLR_URL` from MCP tool input — it must come from deployer-controlled
   environment.
+- Running the HTTP transport on a network with internal services you would not
+  expose to every authenticated MCP caller. `index-url` is the one tool that
+  makes an outbound GET to a caller-supplied address: it sends no credentials or
+  caller headers and refuses link-local and cloud-metadata addresses, but
+  anything else the server process can reach, including loopback and RFC1918
+  services, is fetched on request. The boundary is the network the server runs
+  on; choose it accordingly, and bound a single fetch with the
+  `SOLR_INDEX_URL_IDLE_TIMEOUT` and `SOLR_INDEX_URL_MAX_BYTES` knobs.
 
 ## Primary sources
 

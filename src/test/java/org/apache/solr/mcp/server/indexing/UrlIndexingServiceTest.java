@@ -181,6 +181,17 @@ class UrlIndexingServiceTest {
 	}
 
 	@Test
+	void aReadFailureWrappedByTheParserIsABodyFailureNotAParseError() throws Exception {
+		when(fetcher.fetch(any())).thenReturn(fetched(URL, "application/json", new ClosableBody("[")));
+		when(indexingService.indexStreamedDocuments(eq("shows"), any(Reader.class), eq("json")))
+				.thenThrow(new DocumentProcessingException("read failed",
+						new IOException("No data received for PT30S; aborting")));
+
+		var e = assertThrows(IllegalStateException.class, () -> service.indexUrl("shows", URL, null));
+		assertEquals(UrlIndexingService.BODY_FAILED, e.getMessage());
+	}
+
+	@Test
 	void solrFailuresAreStateErrors() throws Exception {
 		when(fetcher.fetch(any())).thenReturn(fetched(URL, "application/json", new ClosableBody("[]")));
 		when(indexingService.indexStreamedDocuments(eq("shows"), any(Reader.class), eq("json")))

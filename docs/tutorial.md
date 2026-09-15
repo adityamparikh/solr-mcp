@@ -90,9 +90,17 @@ only the data directory read-only and pass its container path, such as
 `/data/shows.json`. The local client can ingest any file readable by the server
 process, so use OS permissions or container isolation to keep secrets inaccessible.
 Relative paths use the server's working directory, which may differ from your shell.
-HTTP has no file-ingestion tool; use `index-json-documents` with inline JSON there.
-The server does not fetch URLs; download once into a location the local server can
-read. Do not ask the model to reconstruct the entire dataset from memory.
+In HTTP mode, or whenever the data already has a URL, use `index-url` with the raw
+URL of the document, for example
+`https://raw.githubusercontent.com/apache/solr-mcp/main/src/test/resources/shows.json`.
+The server fetches it from its own network position with no credentials, so the
+URL must be reachable from where the server runs, and `localhost` means the
+server's loopback, not yours. A file you select in Claude Desktop goes through the
+inline tools (`index-json-documents` and friends) exactly as before: the client
+cannot send files to an MCP server and the server cannot see your disk, so do not
+serve the file on your own machine and point `index-url` at it. Large attachments
+are split across several calls by the model, each of which commits. Do not ask the
+model to reconstruct the entire dataset from memory.
 
 ---
 

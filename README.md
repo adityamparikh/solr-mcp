@@ -97,6 +97,7 @@ Using a different client, or want STDIO/HTTP/Docker options? See the per-client 
 |------|-------------|
 | `search` | Full-text search with filtering, faceting, sorting, and pagination |
 | `index-json-documents` | Index documents from a JSON string into a collection |
+| `index-url` | Index a UTF-8 JSON, CSV, XML or Markdown document from an http(s) URL (both transports; fetched from the server's network) |
 | `index-file` | Index a local UTF-8 JSON, CSV, XML or Markdown file (STDIO only; no file-size cap) |
 | `index-csv-documents` | Index documents from a CSV string into a collection |
 | `index-xml-documents` | Index documents from an XML string into a collection |
@@ -123,6 +124,19 @@ environment variable is required. JSON, CSV, XML and Markdown are detected from
 download or to override detection, add `"format":"json"` (or `csv`, `xml`,
 `markdown`/`md`). Reuse the same path for another prepared collection. The result
 reports actual counts and field names, never the file contents.
+
+**Index from a URL in either transport:** call `index-url` with
+`{"collection":"shows","url":"https://raw.githubusercontent.com/apache/solr-mcp/main/src/test/resources/shows.json"}`.
+The server fetches the URL from its own network position with no credentials or
+custom headers, so `localhost` means the server, not your client. Link-local and
+cloud-metadata addresses are refused; anything else the server can reach is
+allowed, so run the HTTP transport only on a network you are willing to expose to
+every authenticated caller. The format comes from the URL path extension, then the
+`Content-Type`; add `"format":"csv"` when neither identifies it. Non-2xx responses
+and HTML pages are errors. Four environment variables bound a fetch:
+`SOLR_INDEX_URL_CONNECT_TIMEOUT` (`10s`), `SOLR_INDEX_URL_RESPONSE_TIMEOUT`
+(`60s`), `SOLR_INDEX_URL_IDLE_TIMEOUT` (`30s`, aborts a body that stops delivering
+bytes) and `SOLR_INDEX_URL_MAX_BYTES` (`0`, unlimited).
 
 There is **no application-imposed file-size cap**. JSON/CSV/XML records are parsed
 incrementally and sent in batches of 1,000; Markdown remains one document with its
