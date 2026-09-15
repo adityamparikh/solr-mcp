@@ -23,7 +23,6 @@ import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.util.Locale;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.mcp.server.indexing.documentcreator.DocumentProcessingException;
@@ -115,7 +114,7 @@ public class FileIndexingService {
 		Path file = resolveFile(path);
 		String selectedFormat = resolveFormat(file, format);
 		try (var input = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
-			return indexingService.indexFileDocuments(collection, input, selectedFormat);
+			return indexingService.indexStreamedDocuments(collection, input, selectedFormat);
 		} catch (DocumentProcessingException e) {
 			logger.debug("Could not parse file for indexing", e);
 			throw new IllegalArgumentException("Cannot parse the file as UTF-8 " + selectedFormat
@@ -135,14 +134,7 @@ public class FileIndexingService {
 	private static String resolveFormat(Path file, @Nullable String format) {
 		String name = file.getFileName().toString();
 		String selected = format == null || format.isBlank() ? name.substring(name.lastIndexOf('.') + 1) : format;
-		return switch (selected.trim().toLowerCase(Locale.ROOT)) {
-			case "json" -> "json";
-			case "csv" -> "csv";
-			case "xml" -> "xml";
-			case "md", "markdown" -> "markdown";
-			default -> throw new IllegalArgumentException(
-					"Cannot determine the file format. Supply format=json, csv, xml or markdown.");
-		};
+		return IndexFormats.normalize(selected);
 	}
 
 	private static Path resolveFile(String path) {

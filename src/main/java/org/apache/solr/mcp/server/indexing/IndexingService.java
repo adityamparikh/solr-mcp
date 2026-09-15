@@ -625,8 +625,9 @@ public class IndexingService {
 		}
 	}
 
-	String indexFileDocuments(String collection, Reader input, String format) throws IOException, SolrServerException {
-		var progress = new FileIndexingProgress(collection);
+	String indexStreamedDocuments(String collection, Reader input, String format)
+			throws IOException, SolrServerException {
+		var progress = new StreamingProgress(collection);
 		indexingDocumentCreator.stream(input, format, progress::accept);
 		progress.flush();
 		solrClient.commit(collection);
@@ -641,7 +642,7 @@ public class IndexingService {
 						: ". Some documents failed; check field types with get-schema and verify the indexed count before retrying.");
 	}
 
-	private final class FileIndexingProgress {
+	private final class StreamingProgress {
 		private final String collection;
 		private final List<SolrInputDocument> batch = new ArrayList<>(DEFAULT_BATCH_SIZE);
 		private final Set<String> fieldNames = new TreeSet<>();
@@ -649,7 +650,7 @@ public class IndexingService {
 		private long successCount;
 		private boolean fieldsElided;
 
-		private FileIndexingProgress(String collection) {
+		private StreamingProgress(String collection) {
 			this.collection = collection;
 		}
 

@@ -27,6 +27,7 @@ import java.util.stream.Stream;
 import org.apache.solr.mcp.server.collection.CollectionService;
 import org.apache.solr.mcp.server.indexing.FileIndexingService;
 import org.apache.solr.mcp.server.indexing.IndexingService;
+import org.apache.solr.mcp.server.indexing.UrlIndexingService;
 import org.apache.solr.mcp.server.schema.SchemaService;
 import org.apache.solr.mcp.server.search.SearchService;
 import org.apache.solr.mcp.server.util.PromptNames;
@@ -155,6 +156,7 @@ class McpToolRegistrationTest {
 		// IndexingService
 		addToolNames(IndexingService.class, toolNames);
 		addToolNames(FileIndexingService.class, toolNames);
+		addToolNames(UrlIndexingService.class, toolNames);
 
 		// CollectionService
 		addToolNames(CollectionService.class, toolNames);
@@ -240,7 +242,7 @@ class McpToolRegistrationTest {
 
 		List<String> violations = Stream
 				.of(CollectionService.class, SchemaService.class, SearchService.class, IndexingService.class,
-						FileIndexingService.class)
+						FileIndexingService.class, UrlIndexingService.class)
 				.flatMap(c -> Arrays.stream(c.getDeclaredMethods()))
 				.filter(m -> mcpAnnotations.stream().anyMatch(m::isAnnotationPresent))
 				.filter(m -> !m.isAnnotationPresent(PreAuthorize.class))
