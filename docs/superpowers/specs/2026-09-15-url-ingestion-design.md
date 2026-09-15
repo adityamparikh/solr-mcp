@@ -229,9 +229,11 @@ behavioural change.
    makes null impossible; do not null-check).
 2. Parse `url` with `URI.create` inside a try; reject `URISyntaxException` /
    `IllegalArgumentException`, non-absolute URIs, any scheme other than `http` or
-   `https`, a null `getHost()` (Java returns null for authorities it cannot parse as
-   a host, e.g. a bare decimal IP), and a non-null `getUserInfo()` (embedded
-   credentials contradict D5).
+   `https`, a null `getHost()` (Java returns null for an empty or unparsable
+   authority such as `http:///x`), and a non-null `getUserInfo()` (embedded
+   credentials contradict D5). A bare decimal host such as `http://2852039166/`
+   parses as a host and `InetAddress.getAllByName` decodes it to
+   `169.254.169.254`, so it is caught by the address check in step 3, not here.
 3. Resolve `uri.getHost()` with `InetAddress.getAllByName`; `UnknownHostException`
    is the unreachable error. Then `UrlTargetPolicy.check(uri, addresses)`: for
    **every** resolved address, reject if `isLinkLocalAddress()` is true or the
