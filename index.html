@@ -2138,7 +2138,9 @@ cd solr-mcp
       </p>
       <ol style="max-width:var(--measure);color:var(--ink-2);padding-left:1.1rem;font-size:.86rem">
         <li>Start Keycloak and create the realm, client, <b>audience mapper</b> and test user.
-          The Quick Start block in the Keycloak guide above does all of it in one paste.</li>
+          The <a href="https://github.com/apache/solr-mcp/blob/main/docs/security/keycloak.md#quick-start">Quick Start block in the Keycloak guide</a>
+          does all of it in one paste: one <code class="inline">docker run</code>, four
+          <code class="inline">curl</code> calls, then a check that the realm answers.</li>
         <li>Start the server with security on (JAR, JDK 25; the Docker command in step 2 works the same with these three variables):</li>
       </ol>
       <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>PROFILES=http HTTP_SECURITY_ENABLED=true \
