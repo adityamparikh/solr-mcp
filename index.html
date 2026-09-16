@@ -2212,7 +2212,11 @@ java -jar /absolute/path/to/solr-mcp-1.0.0-SNAPSHOT.jar</code></pre></div>
   -d client_id=solr-mcp-client -d username=testuser -d password=testpassword \
   -d grant_type=password | jq -r .access_token)
 
-python3 -c "import sys,base64,json;p=sys.argv[1].split('.')[1];p+='='*(-len(p)%4);print(json.loads(base64.urlsafe_b64decode(p))['aud'])" "$TOKEN"
+python3 - "$TOKEN" &lt;&lt;'EOF'
+import sys, base64, json
+p = sys.argv[1].split('.')[1]; p += '=' * (-len(p) % 4)
+print(json.loads(base64.urlsafe_b64decode(p))['aud'])
+EOF
 # ['http://localhost:8080/mcp', 'account']</code></pre></div>
 
       <h3>5. Prove the gate with curl</h3>
