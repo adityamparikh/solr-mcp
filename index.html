@@ -318,6 +318,7 @@ body {
 .step[data-done="1"] .done-toggle { border-color: var(--accent); color: var(--accent); }
 .step[data-done="1"] > .step-body { opacity: .55; }
 
+.panel-body h4 { font-size: .95rem; margin: 1.1rem 0 .35rem; color: var(--ink); }
 h3 {
   font-family: var(--f-body);
   font-size: .82rem; letter-spacing: .1em; text-transform: uppercase;
@@ -793,7 +794,7 @@ java -jar C:/path/to/solr-mcp-1.0.0-SNAPSHOT.jar</code></pre></div>
           defaults to <b>true</b>, the issuer is <code class="inline">OAUTH2_ISSUER_URI</code>).
           <code class="inline">HTTP_SECURITY_ENABLED=false</code> is for a laptop at a hackathon,
           bound to localhost. Never run it that way on anything other people can reach; the
-          <a href="#more">Security setup</a> panel below has the Auth0 and Keycloak walkthroughs.
+          <a href="#secured">Security setup</a> panel below walks through turning it on, start to finish.
         </p>
       </div>
       <h3>Point your client at it</h3>
@@ -2224,7 +2225,7 @@ curl -s -X POST http://localhost:8080/mcp -H "Content-Type: application/json" \
 
 curl -s -X POST http://localhost:8080/mcp -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" -H "Authorization: Bearer $TOKEN" -d "$CALL"
-# ... "text":"[\"films\"]" ... "isError":false</code></pre></div>
+# ... "text":"[\"shows-auto\", ...]" ... "isError":false   (your collections from steps 3 and 5)</code></pre></div>
 
       <h3>6. Connect your client — with the token in a header</h3>
       <p style="font-size:.86rem;color:var(--ink-2)">
@@ -2240,7 +2241,7 @@ curl -s -X POST http://localhost:8080/mcp -H "Content-Type: application/json" \
   --header "Authorization: Bearer $TOKEN"
 claude mcp list      # ✔ Connected — true with or without the header, so also run:
 claude -p "Call the list-collections tool on the solr-mcp MCP server and reply with its raw result"
-# ["films"]   ← the proof. "Access Denied" here means the header did not reach the server.</code></pre></div>
+# ["shows-auto", ...]   ← the proof. "Access Denied" here means the header did not reach the server.</code></pre></div>
       <h4>MCP Inspector</h4>
       <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code># web UI
 npx @modelcontextprotocol/inspector --server-url http://localhost:8080/mcp --transport http \
@@ -2451,6 +2452,14 @@ docker run -d --name solr-mcp-demo -p 8983:8983 solr:9-slim solr start -c -f</co
       apply();
     });
   });
+
+  /* ---- open a panel when linked to by hash ---- */
+  function openHashPanel() {
+    var el = location.hash && document.getElementById(location.hash.slice(1));
+    if (el && el.tagName === "DETAILS") { el.open = true; }
+  }
+  window.addEventListener("hashchange", openHashPanel);
+  openHashPanel();
 
   /* ---- copy buttons ---- */
   function flash(btn, label) {
