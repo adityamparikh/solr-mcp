@@ -2131,9 +2131,37 @@ cd solr-mcp
         <a href="https://github.com/apache/solr-mcp/blob/main/docs/security/keycloak.md">OAuth2 with Keycloak</a>
       </div>
       <p style="font-size:.86rem;color:var(--ink-2)">
-        Short version: the server is a resource server. Your identity provider issues tokens,
-        the server validates them against <code class="inline">OAUTH2_ISSUER_URI</code>, and
-        MCP clients handle the authorization flow themselves.
+        Short version: the server is a resource server. Your identity provider issues tokens;
+        the server checks signature, issuer, expiry, and that <code class="inline">aud</code>
+        contains the URL the client dials (<code class="inline">http://localhost:8080/mcp</code>).
+        To try it on one laptop with Keycloak, in order:
+      </p>
+      <ol style="max-width:var(--measure);color:var(--ink-2);padding-left:1.1rem;font-size:.86rem">
+        <li>Start Keycloak and create the realm, client, <b>audience mapper</b> and test user.
+          The Quick Start block in the Keycloak guide above does all of it in one paste.</li>
+        <li>Start the server with security on (JAR, JDK 25; the Docker command in step 2 works the same with these three variables):</li>
+      </ol>
+      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>PROFILES=http HTTP_SECURITY_ENABLED=true \
+OAUTH2_ISSUER_URI=http://localhost:8180/realms/solr-mcp \
+SOLR_URL=http://localhost:8983/solr/ \
+java -jar /absolute/path/to/solr-mcp-1.0.0-SNAPSHOT.jar</code></pre></div>
+      <ol start="3" style="max-width:var(--measure);color:var(--ink-2);padding-left:1.1rem;font-size:.86rem">
+        <li>Get a token, then connect the client <b>with the token in a header</b>:</li>
+      </ol>
+      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>TOKEN=$(curl -s -X POST http://localhost:8180/realms/solr-mcp/protocol/openid-connect/token \
+  -d client_id=solr-mcp-client -d username=testuser -d password=testpassword \
+  -d grant_type=password | jq -r .access_token)
+
+claude mcp add --transport http solr-mcp http://localhost:8080/mcp \
+  --header "Authorization: Bearer $TOKEN"</code></pre></div>
+      <p style="font-size:.86rem;color:var(--ink-2)">
+        The header is not optional. The server never answers an anonymous
+        <code class="inline">/mcp</code> request with 401, and MCP clients start OAuth only on a
+        401 — so without it every client (Claude Code, Inspector, mcp-remote) reports
+        "connected", lists the tools, and gets <code class="inline">Access Denied</code> from
+        every call. Keycloak tokens last 5 minutes by default; the guide shows the one call that
+        raises it. Auth0 works the same way with a machine-to-machine app whose API identifier is
+        the URL above. Other clients take the same header — see the HTTP security model.
       </p>
     </div>
   </details>
