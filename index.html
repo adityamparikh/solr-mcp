@@ -2306,13 +2306,37 @@ npx @modelcontextprotocol/inspector --cli http://localhost:8080/mcp --transport 
       <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>docker rm -f keycloak
 claude mcp remove solr-mcp</code></pre></div>
 
+      <h3>Using Auth0 instead of Keycloak</h3>
+      <p style="font-size:.86rem;color:var(--ink-2)">
+        Same server, same checks; only steps 1–4 change. You need your own Auth0 tenant
+        (free tier is enough) and to be Admin on it.
+      </p>
+      <ol style="max-width:var(--measure);color:var(--ink-2);padding-left:1.1rem;font-size:.86rem">
+        <li><b>Applications → APIs → Create API.</b> Identifier exactly
+          <code class="inline">http://localhost:8080/mcp</code>, RS256. The identifier becomes the
+          token's <code class="inline">aud</code> and cannot be edited later. Auth0 also creates a
+          Machine to Machine app named <i>…(Test Application)</i>, already authorized for the API;
+          its <b>Domain</b>, <b>Client ID</b> and <b>Client Secret</b> are on its Settings tab.</li>
+        <li><b>Start the server</b> as in step 3, with the issuer set to your tenant — the trailing
+          slash matters, it is how Auth0 writes <code class="inline">iss</code>:</li>
+      </ol>
+      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>PROFILES=http HTTP_SECURITY_ENABLED=true \
+OAUTH2_ISSUER_URI=https://YOUR-TENANT.us.auth0.com/ \
+SOLR_URL=http://localhost:8983/solr/ \
+java -jar /absolute/path/to/solr-mcp-1.0.0-SNAPSHOT.jar</code></pre></div>
+      <ol start="3" style="max-width:var(--measure);color:var(--ink-2);padding-left:1.1rem;font-size:.86rem">
+        <li><b>Get a token</b> with the client-credentials grant, then continue at step 5. Auth0
+          tokens last 24 hours, so no lifetime change is needed.</li>
+      </ol>
+      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>TOKEN=$(curl -s -X POST https://YOUR-TENANT.us.auth0.com/oauth/token \
+  -H 'content-type: application/json' \
+  -d '{"client_id":"CLIENT_ID","client_secret":"CLIENT_SECRET",
+       "audience":"http://localhost:8080/mcp","grant_type":"client_credentials"}' | jq -r .access_token)</code></pre></div>
+
       <h3>Beyond the laptop</h3>
       <p style="font-size:.86rem;color:var(--ink-2)">
-        Auth0 works the same way: a Machine to Machine application plus an API whose
-        <b>Identifier</b> is the server's URL (<code class="inline">http://localhost:8080/mcp</code>
-        locally, the public URL in production), tokens from the client-credentials grant. For a team
-        deployment — TLS, a public issuer, an application that refreshes its own token — the full
-        guides are the reference:
+        For a team deployment — TLS, a public issuer, the public URL as the audience, an
+        application that refreshes its own token — the full guides are the reference:
       </p>
       <div class="linkrow">
         <a href="https://github.com/apache/solr-mcp/blob/main/docs/security/keycloak.md">Keycloak guide</a>
