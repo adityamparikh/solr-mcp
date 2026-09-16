@@ -2111,60 +2111,211 @@ cd solr-mcp
       <p style="font-size:.86rem;color:var(--ink-2)">
         The hackathon commands turn security off with
         <code class="inline">HTTP_SECURITY_ENABLED=false</code>. Anything reachable by other
-        people needs the OAuth2 setup in the next panel.
+        people needs the OAuth2 setup in the <a href="#secured">Security setup</a> panel.
       </p>
     </div>
   </details>
 
-  <details class="panel">
-    <summary>Security setup — OAuth2 with Auth0 or Keycloak <span class="hint">full walkthroughs</span></summary>
+  <details class="panel" id="secured">
+    <summary>Security setup — HTTP mode with OAuth2 on <span class="hint">Keycloak on your laptop, start to finish</span></summary>
     <div class="panel-body">
       <p>
-        These are complete, maintained guides in the repo — the right place to send anyone who
-        wants to deploy this for a team rather than a laptop.
+        Everything above runs with <code class="inline">HTTP_SECURITY_ENABLED=false</code>. This
+        panel turns security on and proves it, with Keycloak as the identity provider. About ten
+        minutes. It assumes Solr from step 1 is running, the JAR from step 0 is downloaded with
+        Java 25 on the PATH, and you have <code class="inline">docker</code>,
+        <code class="inline">curl</code> and <code class="inline">jq</code>. Commands are bash
+        (macOS, Linux, WSL or Git Bash). Stop any unsecured server from step 2 first — both
+        listen on 8080.
       </p>
-      <div class="linkrow">
-        <a href="https://github.com/apache/solr-mcp/blob/main/docs/security/deployment-model.md">Deployment model (single-tenant)</a>
-        <a href="https://github.com/apache/solr-mcp/blob/main/docs/security/http.md">HTTP security model</a>
-        <a href="https://github.com/apache/solr-mcp/blob/main/docs/security/stdio.md">STDIO security model</a>
-        <a href="https://github.com/apache/solr-mcp/blob/main/docs/security/auth0.md">OAuth2 with Auth0</a>
-        <a href="https://github.com/apache/solr-mcp/blob/main/docs/security/keycloak.md">OAuth2 with Keycloak</a>
-      </div>
       <p style="font-size:.86rem;color:var(--ink-2)">
-        Short version: the server is a resource server. Your identity provider issues tokens;
-        the server checks signature, issuer, expiry, and that <code class="inline">aud</code>
-        contains the URL the client dials (<code class="inline">http://localhost:8080/mcp</code>).
-        To try it on one laptop with Keycloak, in order:
+        How it fits together: the server is a <b>resource server</b>. Keycloak issues a JWT, the
+        server checks its signature against Keycloak's keys, the issuer, the expiry, and that the
+        <code class="inline">aud</code> claim contains the URL the client dials —
+        <code class="inline">http://localhost:8080/mcp</code>. Every step below exists to make one
+        of those checks pass.
       </p>
-      <ol style="max-width:var(--measure);color:var(--ink-2);padding-left:1.1rem;font-size:.86rem">
-        <li>Start Keycloak and create the realm, client, <b>audience mapper</b> and test user.
-          The <a href="https://github.com/apache/solr-mcp/blob/main/docs/security/keycloak.md#quick-start">Quick Start block in the Keycloak guide</a>
-          does all of it in one paste: one <code class="inline">docker run</code>, four
-          <code class="inline">curl</code> calls, then a check that the realm answers.</li>
-        <li>Start the server with security on (JAR, JDK 25; the Docker command in step 2 works the same with these three variables):</li>
-      </ol>
+
+      <h3>1. Start Keycloak</h3>
+      <p style="font-size:.86rem;color:var(--ink-2)">Port 8180, so it does not collide with the MCP server. The loop waits until Keycloak actually answers; the container is "up" long before that.</p>
+      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>docker run -d --name keycloak -p 8180:8080 \
+  -e KC_BOOTSTRAP_ADMIN_USERNAME=admin -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin \
+  quay.io/keycloak/keycloak:26.0 start-dev
+
+until curl -sf http://localhost:8180/realms/master/.well-known/openid-configuration >/dev/null; do sleep 2; done
+echo "Keycloak ready"</code></pre></div>
+
+      <h3>2. Create the realm, client and test user</h3>
+      <p style="font-size:.86rem;color:var(--ink-2)">
+        One paste. It logs in as admin, creates a realm <code class="inline">solr-mcp</code>, a
+        public client <code class="inline">solr-mcp-client</code> with the <b>audience mapper</b>
+        that puts <code class="inline">http://localhost:8080/mcp</code> into every token (Keycloak
+        does not honour the standard <code class="inline">resource=</code> parameter, so without
+        this mapper every token is rejected), and a user
+        <code class="inline">testuser</code> / <code class="inline">testpassword</code>. First and
+        last name are not decoration — Keycloak refuses to issue a token to a user missing either.
+        Expect three <code class="inline">201</code>s.
+      </p>
+      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>KC=http://localhost:8180
+ADMIN_TOKEN=$(curl -s -X POST "$KC/realms/master/protocol/openid-connect/token" \
+  -d client_id=admin-cli -d username=admin -d password=admin -d grant_type=password | jq -r .access_token)
+
+curl -s -o /dev/null -w "realm %{http_code}\n" -X POST "$KC/admin/realms" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
+  -d '{"realm":"solr-mcp","enabled":true}'
+
+curl -s -o /dev/null -w "client %{http_code}\n" -X POST "$KC/admin/realms/solr-mcp/clients" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
+  -d '{"clientId":"solr-mcp-client","publicClient":true,"directAccessGrantsEnabled":true,
+       "redirectUris":["http://localhost:6274/*"],"webOrigins":["http://localhost:6274"],
+       "protocolMappers":[{"name":"mcp-audience","protocol":"openid-connect",
+         "protocolMapper":"oidc-audience-mapper",
+         "config":{"included.custom.audience":"http://localhost:8080/mcp",
+                   "access.token.claim":"true","id.token.claim":"false"}}]}'
+
+curl -s -o /dev/null -w "user %{http_code}\n" -X POST "$KC/admin/realms/solr-mcp/users" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
+  -d '{"username":"testuser","email":"test@example.com","firstName":"Test","lastName":"User",
+       "enabled":true,"emailVerified":true,
+       "credentials":[{"type":"password","value":"testpassword","temporary":false}]}'
+
+# Tokens last 5 minutes by default; one hour is kinder for a trial. Expect 204.
+curl -s -o /dev/null -w "lifetime %{http_code}\n" -X PUT "$KC/admin/realms/solr-mcp" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
+  -d '{"accessTokenLifespan":3600}'
+
+curl -sf "$KC/realms/solr-mcp/.well-known/openid-configuration" >/dev/null && echo "realm ready"</code></pre></div>
+
+      <h3>3. Start the server with security on</h3>
+      <p style="font-size:.86rem;color:var(--ink-2)">
+        The realm must answer <b>before</b> this: the server fetches the issuer's configuration
+        while starting and exits with code 1 if it cannot. That is the "realm ready" line above.
+        Use the JAR here rather than the Docker image — inside a container
+        <code class="inline">localhost:8180</code> is not your laptop, and the issuer name has
+        to be identical in the container and in the tokens, which takes more setup than a card.
+      </p>
       <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>PROFILES=http HTTP_SECURITY_ENABLED=true \
 OAUTH2_ISSUER_URI=http://localhost:8180/realms/solr-mcp \
 SOLR_URL=http://localhost:8983/solr/ \
 java -jar /absolute/path/to/solr-mcp-1.0.0-SNAPSHOT.jar</code></pre></div>
-      <ol start="3" style="max-width:var(--measure);color:var(--ink-2);padding-left:1.1rem;font-size:.86rem">
-        <li>Get a token, then connect the client <b>with the token in a header</b>:</li>
-      </ol>
+      <p style="font-size:.86rem;color:var(--ink-2)">Leave that terminal open. In another one, wait for
+        <code class="inline">curl http://localhost:8080/actuator/health</code> to answer
+        <code class="inline">{"status":"UP"}</code>, then read back the audience the server expects.
+        This is the value the mapper in step 2 has to match, character for character:</p>
+      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>curl -s http://localhost:8080/.well-known/oauth-protected-resource | jq -r .resource
+# http://localhost:8080/mcp</code></pre></div>
+
+      <h3>4. Get a token</h3>
+      <p style="font-size:.86rem;color:var(--ink-2)">The password grant, which is what the client in step 2 allows. The second command decodes the token and prints its audience — it must list <code class="inline">http://localhost:8080/mcp</code>.</p>
       <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>TOKEN=$(curl -s -X POST http://localhost:8180/realms/solr-mcp/protocol/openid-connect/token \
   -d client_id=solr-mcp-client -d username=testuser -d password=testpassword \
   -d grant_type=password | jq -r .access_token)
 
-claude mcp add --transport http solr-mcp http://localhost:8080/mcp \
-  --header "Authorization: Bearer $TOKEN"</code></pre></div>
+python3 -c "import sys,base64,json;p=sys.argv[1].split('.')[1];p+='='*(-len(p)%4);print(json.loads(base64.urlsafe_b64decode(p))['aud'])" "$TOKEN"
+# ['http://localhost:8080/mcp', 'account']</code></pre></div>
+
+      <h3>5. Prove the gate with curl</h3>
+      <p style="font-size:.86rem;color:var(--ink-2)">The same tool call twice. Without the header the server answers HTTP 200 with an <code class="inline">Access Denied</code> result; with it you get the collection names. Both lines are the test — one alone proves nothing.</p>
+      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>CALL='{"jsonrpc":"2.0","method":"tools/call","id":1,"params":{"name":"list-collections","arguments":{}}}'
+
+curl -s -X POST http://localhost:8080/mcp -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" -d "$CALL"
+# ... "text":"Access Denied" ... "isError":true
+
+curl -s -X POST http://localhost:8080/mcp -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" -H "Authorization: Bearer $TOKEN" -d "$CALL"
+# ... "text":"[\"films\"]" ... "isError":false</code></pre></div>
+
+      <h3>6. Connect your client — with the token in a header</h3>
       <p style="font-size:.86rem;color:var(--ink-2)">
-        The header is not optional. The server never answers an anonymous
-        <code class="inline">/mcp</code> request with 401, and MCP clients start OAuth only on a
-        401 — so without it every client (Claude Code, Inspector, mcp-remote) reports
-        "connected", lists the tools, and gets <code class="inline">Access Denied</code> from
-        every call. Keycloak tokens last 5 minutes by default; the guide shows the one call that
-        raises it. Auth0 works the same way with a machine-to-machine app whose API identifier is
-        the URL above. Other clients take the same header — see the HTTP security model.
+        The header is the whole point of this step. The server never answers an anonymous
+        <code class="inline">/mcp</code> request with 401, and MCP clients start their OAuth
+        login only when they see a 401 — so a client given just the URL reports
+        <b>connected</b>, lists every tool, and gets <code class="inline">Access Denied</code>
+        from every call, with no browser opening. Nothing looks broken. Pass
+        <code class="inline">$TOKEN</code> from step 4 explicitly.
       </p>
+      <h4>Claude Code</h4>
+      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>claude mcp add --transport http solr-mcp http://localhost:8080/mcp \
+  --header "Authorization: Bearer $TOKEN"
+claude mcp list      # ✔ Connected — true with or without the header, so also run:
+claude -p "Call the list-collections tool on the solr-mcp MCP server and reply with its raw result"
+# ["films"]   ← the proof. "Access Denied" here means the header did not reach the server.</code></pre></div>
+      <h4>MCP Inspector</h4>
+      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code># web UI
+npx @modelcontextprotocol/inspector --server-url http://localhost:8080/mcp --transport http \
+  --header "Authorization: Bearer $TOKEN"
+# or one call from the CLI, no browser
+npx @modelcontextprotocol/inspector --cli http://localhost:8080/mcp --transport http \
+  --header "Authorization: Bearer $TOKEN" --method tools/call --tool-name list-collections</code></pre></div>
+      <h4>Claude Desktop and JetBrains, through mcp-remote</h4>
+      <p style="font-size:.86rem;color:var(--ink-2)">Paste the token into <code class="inline">env</code>; mcp-remote expands <code class="inline">${TOKEN}</code> so it stays out of the argument list. Restart the app after editing.</p>
+      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>{
+  "mcpServers": {
+    "solr-mcp": {
+      "command": "npx",
+      "args": ["mcp-remote", "http://localhost:8080/mcp", "--allow-http",
+               "--header", "Authorization: Bearer ${TOKEN}"],
+      "env": { "TOKEN": "paste the token here" }
+    }
+  }
+}</code></pre></div>
+      <h4>VS Code, Cursor, Zed</h4>
+      <p style="font-size:.86rem;color:var(--ink-2)">Each takes a <code class="inline">headers</code> object on the server entry from step 2. VS Code can prompt for the value with an <code class="inline">inputs</code> entry; Cursor reads <code class="inline">${env:SOLR_MCP_TOKEN}</code>.</p>
+      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>"headers": { "Authorization": "Bearer paste-the-token-here" }</code></pre></div>
+
+      <h3>When it breaks</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>Server exits with code 1 right after starting</td>
+              <td>The realm was not answering when the server resolved the issuer. Re-run the last line of step 2 until it prints <code>realm ready</code>, then start the server again.</td>
+            </tr>
+            <tr>
+              <td><code>401</code> with <code>The aud claim is not valid</code></td>
+              <td>The mapper's audience and the URL the client dials differ — <code>127.0.0.1</code> vs <code>localhost</code> is enough. Compare step 3's <code>.resource</code> with step 4's <code>aud</code>, and use the same spelling in the client.</td>
+            </tr>
+            <tr>
+              <td><code>401</code> with <code>Jwt expired</code></td>
+              <td>Re-run step 4 and re-add the server in the client. A client with a configured header reports a failed connection rather than logging in again.</td>
+            </tr>
+            <tr>
+              <td><code>Access Denied</code> <i>with</i> the header</td>
+              <td><code>$TOKEN</code> is empty or <code>null</code>: the token request in step 4 failed. Run it without <code>jq</code> and read the error. <code>Account is not fully set up</code> means the user is missing first/last name or has a temporary password.</td>
+            </tr>
+            <tr>
+              <td>Client shows connected, calls denied, no browser opens</td>
+              <td>Expected without the header — see step 6. This is not an OAuth-capable-client problem; the server never sends the 401 that would start the flow.</td>
+            </tr>
+            <tr>
+              <td>Want to see <i>why</i> a token was rejected</td>
+              <td><code>curl -si -H "Authorization: Bearer $TOKEN" localhost:8080/actuator/metrics | grep -i www-authenticate</code> — a protected actuator endpoint returns a plain 401 with the reason.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Tear down</h3>
+      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>docker rm -f keycloak
+claude mcp remove solr-mcp</code></pre></div>
+
+      <h3>Beyond the laptop</h3>
+      <p style="font-size:.86rem;color:var(--ink-2)">
+        Auth0 works the same way: a Machine to Machine application plus an API whose
+        <b>Identifier</b> is the server's URL (<code class="inline">http://localhost:8080/mcp</code>
+        locally, the public URL in production), tokens from the client-credentials grant. For a team
+        deployment — TLS, a public issuer, an application that refreshes its own token — the full
+        guides are the reference:
+      </p>
+      <div class="linkrow">
+        <a href="https://github.com/apache/solr-mcp/blob/main/docs/security/keycloak.md">Keycloak guide</a>
+        <a href="https://github.com/apache/solr-mcp/blob/main/docs/security/auth0.md">Auth0 guide</a>
+        <a href="https://github.com/apache/solr-mcp/blob/main/docs/security/http.md">HTTP security model</a>
+        <a href="https://github.com/apache/solr-mcp/blob/main/docs/security/deployment-model.md">Deployment model (single-tenant)</a>
+        <a href="https://github.com/apache/solr-mcp/blob/main/docs/security/stdio.md">STDIO security model</a>
+      </div>
     </div>
   </details>
 
