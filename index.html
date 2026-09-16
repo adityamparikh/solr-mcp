@@ -2240,34 +2240,105 @@ curl -s -X POST http://localhost:8080/mcp -H "Content-Type: application/json" \
         from every call, with no browser opening. Nothing looks broken. Pass
         <code class="inline">$TOKEN</code> from step 4 explicitly.
       </p>
-      <h4>Claude Code</h4>
-      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>claude mcp add --transport http solr-mcp http://localhost:8080/mcp \
+
+      <!-- ── Claude Code ── -->
+      <div data-client="claude-code">
+        <h4>Claude Code</h4>
+        <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>claude mcp add --transport http solr-mcp http://localhost:8080/mcp \
   --header "Authorization: Bearer $TOKEN"
 claude mcp list      # ✔ Connected — true with or without the header, so also run:
 claude -p "Call the list-collections tool on the solr-mcp MCP server and reply with its raw result"
 # ["shows-auto", ...]   ← the proof. "Access Denied" here means the header did not reach the server.</code></pre></div>
-      <h4>MCP Inspector</h4>
-      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code># web UI
+      </div>
+
+      <!-- ── Claude Desktop ── -->
+      <div data-client="claude-desktop">
+        <h4>Claude Desktop (via mcp-remote)</h4>
+        <p style="font-size:.86rem;color:var(--ink-2)">Paste the token into <code class="inline">env</code>; <code class="inline">mcp-remote</code> forwards it on every request. Edit your <code class="inline">claude_desktop_config.json</code>, then fully quit and reopen Claude Desktop:</p>
+        <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>{
+  "mcpServers": {
+    "solr-mcp": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "http://localhost:8080/mcp", "--allow-http",
+               "--header", "Authorization: Bearer ${TOKEN}"],
+      "env": { "TOKEN": "paste-the-token-here" }
+    }
+  }
+}</code></pre></div>
+      </div>
+
+      <!-- ── VS Code / Copilot ── -->
+      <div data-client="copilot">
+        <h4>VS Code / GitHub Copilot</h4>
+        <p style="font-size:.86rem;color:var(--ink-2)">In <code class="inline">.vscode/mcp.json</code>, add the <code class="inline">headers</code> object to the server entry from step 2. Using an <code class="inline">inputs</code> prompt keeps the token out of source control:</p>
+        <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>{
+  "inputs": [
+    { "type": "promptString", "id": "solr-token", "description": "Solr MCP token", "password": true }
+  ],
+  "servers": {
+    "solr-mcp": {
+      "type": "http",
+      "url": "http://localhost:8080/mcp",
+      "headers": { "Authorization": "Bearer ${input:solr-token}" }
+    }
+  }
+}</code></pre></div>
+      </div>
+
+      <!-- ── Cursor ── -->
+      <div data-client="cursor">
+        <h4>Cursor</h4>
+        <p style="font-size:.86rem;color:var(--ink-2)">In <code class="inline">.cursor/mcp.json</code>, add the <code class="inline">headers</code> object to your server entry. Cursor expands <code class="inline">${env:SOLR_MCP_TOKEN}</code> from your environment:</p>
+        <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>{
+  "mcpServers": {
+    "solr-mcp": {
+      "url": "http://localhost:8080/mcp",
+      "headers": { "Authorization": "Bearer ${env:SOLR_MCP_TOKEN}" }
+    }
+  }
+}</code></pre></div>
+      </div>
+
+      <!-- ── Zed ── -->
+      <div data-client="zed">
+        <h4>Zed</h4>
+        <p style="font-size:.86rem;color:var(--ink-2)">In <code class="inline">zed: open settings</code> (JSON), add the <code class="inline">headers</code> object to your remote server entry:</p>
+        <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>{
+  "context_servers": {
+    "solr-mcp": {
+      "url": "http://localhost:8080/mcp",
+      "headers": { "Authorization": "Bearer paste-the-token-here" }
+    }
+  }
+}</code></pre></div>
+      </div>
+
+      <!-- ── IntelliJ ── -->
+      <div data-client="intellij">
+        <h4>IntelliJ IDEA / JetBrains (via mcp-remote)</h4>
+        <p style="font-size:.86rem;color:var(--ink-2)">In <code class="inline">.junie/mcp/mcp.json</code> or IDE Settings, proxy through <code class="inline">mcp-remote</code> to forward the bearer header on each request:</p>
+        <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>{
+  "mcpServers": {
+    "solr-mcp": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "http://localhost:8080/mcp", "--allow-http",
+               "--header", "Authorization: Bearer ${TOKEN}"],
+      "env": { "TOKEN": "paste-the-token-here" }
+    }
+  }
+}</code></pre></div>
+      </div>
+
+      <!-- ── Inspector ── -->
+      <div data-client="inspector">
+        <h4>MCP Inspector</h4>
+        <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code># web UI
 npx @modelcontextprotocol/inspector --server-url http://localhost:8080/mcp --transport http \
   --header "Authorization: Bearer $TOKEN"
 # or one call from the CLI, no browser
 npx @modelcontextprotocol/inspector --cli http://localhost:8080/mcp --transport http \
   --header "Authorization: Bearer $TOKEN" --method tools/call --tool-name list-collections</code></pre></div>
-      <h4>Claude Desktop and JetBrains, through mcp-remote</h4>
-      <p style="font-size:.86rem;color:var(--ink-2)">Paste the token into <code class="inline">env</code>; mcp-remote expands <code class="inline">${TOKEN}</code> so it stays out of the argument list. Restart the app after editing.</p>
-      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>{
-  "mcpServers": {
-    "solr-mcp": {
-      "command": "npx",
-      "args": ["mcp-remote", "http://localhost:8080/mcp", "--allow-http",
-               "--header", "Authorization: Bearer ${TOKEN}"],
-      "env": { "TOKEN": "paste the token here" }
-    }
-  }
-}</code></pre></div>
-      <h4>VS Code, Cursor, Zed</h4>
-      <p style="font-size:.86rem;color:var(--ink-2)">Each takes a <code class="inline">headers</code> object on the server entry from step 2. VS Code can prompt for the value with an <code class="inline">inputs</code> entry; Cursor reads <code class="inline">${env:SOLR_MCP_TOKEN}</code>.</p>
-      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>"headers": { "Authorization": "Bearer paste-the-token-here" }</code></pre></div>
+      </div>
 
       <h3>When it breaks</h3>
       <div class="tablewrap">
@@ -2309,29 +2380,78 @@ claude mcp remove solr-mcp</code></pre></div>
       <h3>Using Auth0 instead of Keycloak</h3>
       <p style="font-size:.86rem;color:var(--ink-2)">
         Same server, same checks; only steps 1–4 change. You need your own Auth0 tenant
-        (free tier is enough) and to be Admin on it.
+        (the free tier works) and administrative access.
       </p>
+
       <ol style="max-width:var(--measure);color:var(--ink-2);padding-left:1.1rem;font-size:.86rem">
-        <li><b>Applications → APIs → Create API.</b> Identifier exactly
-          <code class="inline">http://localhost:8080/mcp</code>, RS256. The identifier becomes the
-          token's <code class="inline">aud</code> and cannot be edited later. Auth0 also creates a
-          Machine to Machine app named <i>…(Test Application)</i>, already authorized for the API;
-          its <b>Domain</b>, <b>Client ID</b> and <b>Client Secret</b> are on its Settings tab.</li>
-        <li><b>Start the server</b> as in step 3, with the issuer set to your tenant — the trailing
-          slash matters, it is how Auth0 writes <code class="inline">iss</code>:</li>
+        <li>
+          <b>Applications → APIs → Create API.</b>
+          Name it <code class="inline">Solr MCP API</code>. Set the <b>Identifier</b> to exactly
+          <code class="inline">http://localhost:8080/mcp</code> with signing algorithm <b>RS256</b>.
+          The identifier becomes the token's <code class="inline">aud</code> (audience) claim,
+          which the server matches character-for-character against its incoming resource URI.
+          It cannot be edited after creation.
+        </li>
+        <li>
+          <b>Authorize your Machine to Machine application.</b>
+          Auth0 creates a default test application named <i>Solr MCP API (Test Application)</i>.
+          Go to <b>Applications → APIs → Solr MCP API → Machine to Machine Applications</b>,
+          and ensure your app is toggled to <b>Authorized</b>. On the application's <b>Settings</b> tab
+          (under <b>Applications → Applications</b>), copy your <b>Domain</b>, <b>Client ID</b>, and <b>Client Secret</b>.
+        </li>
+        <li>
+          <b>Start the server with security on.</b>
+          Because Auth0 is a public HTTPS provider, both Docker and JAR run directly without host-networking hurdles.
+          The trailing slash in <code class="inline">OAUTH2_ISSUER_URI</code> is mandatory — Auth0 writes its
+          <code class="inline">iss</code> claim with a trailing slash:
+        </li>
       </ol>
-      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>PROFILES=http HTTP_SECURITY_ENABLED=true \
+
+      <div class="codeblock" data-runtime="docker"><button class="copy" type="button">Copy</button><pre><code>docker run -p 8080:8080 --rm \
+  -e PROFILES=http \
+  -e HTTP_SECURITY_ENABLED=true \
+  -e OAUTH2_ISSUER_URI=https://YOUR-TENANT.us.auth0.com/ \
+  -e SOLR_URL=http://host.docker.internal:8983/solr/ \
+  ghcr.io/adityamparikh/solr-mcp:coc2026</code></pre></div>
+
+      <div class="codeblock" data-runtime="jar"><button class="copy" type="button">Copy</button><pre><code>PROFILES=http HTTP_SECURITY_ENABLED=true \
 OAUTH2_ISSUER_URI=https://YOUR-TENANT.us.auth0.com/ \
 SOLR_URL=http://localhost:8983/solr/ \
 java -jar /absolute/path/to/solr-mcp-1.0.0-SNAPSHOT.jar</code></pre></div>
-      <ol start="3" style="max-width:var(--measure);color:var(--ink-2);padding-left:1.1rem;font-size:.86rem">
-        <li><b>Get a token</b> with the client-credentials grant, then continue at step 5. Auth0
-          tokens last 24 hours, so no lifetime change is needed.</li>
+
+      <ol start="4" style="max-width:var(--measure);color:var(--ink-2);padding-left:1.1rem;font-size:.86rem">
+        <li>
+          <b>Get a token using the Client Credentials grant.</b>
+          Auth0 M2M tokens default to 24 hours (86,400s), so unlike Keycloak no lifetime adjustment is needed.
+          Mint the token with <code class="inline">curl</code>:
+        </li>
       </ol>
+
       <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>TOKEN=$(curl -s -X POST https://YOUR-TENANT.us.auth0.com/oauth/token \
   -H 'content-type: application/json' \
-  -d '{"client_id":"CLIENT_ID","client_secret":"CLIENT_SECRET",
+  -d '{"client_id":"YOUR_CLIENT_ID","client_secret":"YOUR_CLIENT_SECRET",
        "audience":"http://localhost:8080/mcp","grant_type":"client_credentials"}' | jq -r .access_token)</code></pre></div>
+
+      <p style="font-size:.86rem;color:var(--ink-2)">
+        Or use the repository helper script with your <code class="inline">.env</code> file:
+      </p>
+
+      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>TOKEN=$(./scripts/get-auth0-token.sh --quiet)</code></pre></div>
+
+      <p style="font-size:.86rem;color:var(--ink-2)">
+        Confirm the token audience:
+      </p>
+
+      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>python3 - "$TOKEN" &lt;&lt;'EOF'
+import sys, base64, json
+p = sys.argv[1].split('.')[1]; p += '=' * (-len(p) % 4)
+print(json.loads(base64.urlsafe_b64decode(p))['aud'])
+EOF
+# http://localhost:8080/mcp</code></pre></div>
+
+      <p style="font-size:.86rem;color:var(--ink-2)">
+        Now continue to <b>step 5</b> above to test the gate with curl, then <b>step 6</b> to connect your client.
+      </p>
 
       <h3>Beyond the laptop</h3>
       <p style="font-size:.86rem;color:var(--ink-2)">
