@@ -43,7 +43,9 @@ Solr MCP Server is a Spring AI Model Context Protocol (MCP) server that enables 
 ./gradlew nativeCompile -Pnative             # Compile native binary (host OS only)
 ./gradlew nativeTest -Pnative                # Run tests as native image
 
-# Run locally (requires `docker compose up -d` for Solr)
+# Run locally (bootRun auto-starts compose.yaml's Solr/ZooKeeper via the developmentOnly
+# spring-boot-docker-compose starter; `docker compose up -d` is only needed when running
+# the packaged jar/Docker/native image directly, or to start the boot-ignored `lgtm` service)
 ./gradlew bootRun                  # STDIO mode (default)
 PROFILES=http ./gradlew bootRun    # HTTP mode
 ```

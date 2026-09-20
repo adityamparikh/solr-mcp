@@ -95,17 +95,6 @@ grype sbom:application.cdx.json
 
 ## Running Locally
 
-### Start Solr
-
-```bash
-docker compose up -d
-```
-
-This starts a Solr instance in SolrCloud mode with ZooKeeper and creates two sample collections:
-- `books` - Created empty. The books.csv download and post are commented out in
-  `init-solr.sh`, so use it as a scratch collection or uncomment those lines.
-- `films` - Collection populated with Solr's sample film data
-
 ### Run the Server
 
 #### STDIO Mode (Default)
@@ -114,10 +103,22 @@ This starts a Solr instance in SolrCloud mode with ZooKeeper and creates two sam
 ./gradlew bootRun
 ```
 
+`bootRun` picks up the `spring-boot-docker-compose` / `spring-ai-spring-boot-docker-compose`
+`developmentOnly` dependencies, so Spring Boot auto-detects the root `compose.yaml` and starts
+(then stops) the `solr` and `zoo` services for you — no manual `docker compose up` needed.
+This starts Solr in SolrCloud mode with ZooKeeper and creates two sample collections:
+- `books` - Created empty. The books.csv download and post are commented out in
+  `init-solr.sh`, so use it as a scratch collection or uncomment those lines.
+- `films` - Collection populated with Solr's sample film data
+
 Or using the JAR:
 ```bash
+docker compose up -d
 java -jar build/libs/solr-mcp-1.0.0-SNAPSHOT.jar
 ```
+The `developmentOnly` scope means the docker-compose starter isn't on the packaged jar's
+runtime classpath, so start Solr by hand first when running the JAR (or a Docker/native image)
+directly.
 
 #### HTTP Mode
 
@@ -125,10 +126,17 @@ java -jar build/libs/solr-mcp-1.0.0-SNAPSHOT.jar
 PROFILES=http ./gradlew bootRun
 ```
 
-Spring Boot Docker Compose will automatically start the services declared in `compose.yaml`
-(Solr, ZooKeeper, and optionally LGTM for observability) before the application starts.
-
 The server will start on http://localhost:8080
+
+#### Observability (optional)
+
+The `lgtm` service in `compose.yaml` carries `org.springframework.boot.ignore: "true"`, which
+opts it out of Spring Boot's Docker Compose lifecycle management. Start it by hand if you want
+the Grafana/Loki/Tempo/Mimir stack, regardless of run mode:
+
+```bash
+docker compose up -d lgtm
+```
 
 ### Environment Variables
 
