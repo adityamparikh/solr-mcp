@@ -99,32 +99,39 @@ grype sbom:application.cdx.json
 
 #### STDIO Mode (Default)
 
+`application-stdio.properties` sets `spring.docker.compose.enabled=false` (Docker Compose
+management is only useful for local HTTP development; in STDIO it would add startup delay and
+unexpected container lifecycle noise on the JSON-RPC transport), so start Solr by hand first:
+
 ```bash
+docker compose up -d
 ./gradlew bootRun
 ```
 
-`bootRun` picks up the `spring-boot-docker-compose` / `spring-ai-spring-boot-docker-compose`
-`developmentOnly` dependencies, so Spring Boot auto-detects the root `compose.yaml` and starts
-(then stops) the `solr` and `zoo` services for you — no manual `docker compose up` needed.
 This starts Solr in SolrCloud mode with ZooKeeper and creates two sample collections:
 - `books` - Created empty. The books.csv download and post are commented out in
   `init-solr.sh`, so use it as a scratch collection or uncomment those lines.
 - `films` - Collection populated with Solr's sample film data
 
-Or using the JAR:
+Or using the JAR — same manual step, since the `developmentOnly` docker-compose starter isn't on
+the packaged jar's runtime classpath either:
 ```bash
 docker compose up -d
 java -jar build/libs/solr-mcp-1.0.0-SNAPSHOT.jar
 ```
-The `developmentOnly` scope means the docker-compose starter isn't on the packaged jar's
-runtime classpath, so start Solr by hand first when running the JAR (or a Docker/native image)
-directly.
 
 #### HTTP Mode
 
 ```bash
 PROFILES=http ./gradlew bootRun
 ```
+
+`application-http.properties` sets `spring.docker.compose.enabled=true`, so this mode's
+`bootRun` picks up the `spring-boot-docker-compose` / `spring-ai-spring-boot-docker-compose`
+`developmentOnly` dependencies and auto-starts (then stops) the `solr` and `zoo` services
+declared in the root `compose.yaml` — no manual `docker compose up` needed here. Running the
+built JAR/Docker/native image in HTTP mode still needs the manual step, since those artifacts
+exclude `developmentOnly` dependencies.
 
 The server will start on http://localhost:8080
 
