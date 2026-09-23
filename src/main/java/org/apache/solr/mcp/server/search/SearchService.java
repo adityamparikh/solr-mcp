@@ -18,7 +18,7 @@ package org.apache.solr.mcp.server.search;
 
 import io.micrometer.observation.annotation.Observed;
 import java.io.IOException;
-import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -28,7 +28,6 @@ import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.request.SolrQuery;
 import org.apache.solr.client.solrj.response.FacetField;
 import org.apache.solr.client.solrj.response.QueryResponse;
-import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.SolrDocumentList;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.params.FacetParams;
@@ -162,36 +161,7 @@ public class SearchService {
 	}
 
 	/**
-	 * Converts a SolrDocumentList to a List of Maps for JSON serialization.
-	 *
-	 * <p>
-	 * {@link SolrDocument} already implements {@code Map<String, Object>} (backed
-	 * by a {@link java.util.LinkedHashMap} that preserves field order), so no
-	 * per-document copy is needed here — each {@code SolrDocument} is simply
-	 * widened to its {@code Map} view. This avoids both the allocation of a new map
-	 * per document and the field-order scrambling that a {@link java.util.HashMap}
-	 * copy would introduce.
-	 *
-	 * @param documents
-	 *            the SolrDocumentList to convert from Solr's native format
-	 * @return a List of Maps where each Map represents a document with field names
-	 *         as keys, in Solr's original field order
-	 * @see SolrDocument
-	 * @see SolrDocumentList
-	 */
-	private static List<Map<String, Object>> getDocs(SolrDocumentList documents) {
-		return new ArrayList<>(documents);
-	}
-
-	/**
 	 * Extracts facet information from a QueryResponse.
-	 *
-	 * <p>
-	 * Uses {@link LinkedHashMap} rather than {@link java.util.HashMap} so the facet
-	 * buckets reach the caller in the order Solr returned them —
-	 * {@code facet.sort=count} (the default this service sets) means that order is
-	 * already highest-count-first, which is exactly the order an LLM consuming this
-	 * response should see.
 	 *
 	 * @param queryResponse
 	 *            The QueryResponse containing facet results
@@ -338,7 +308,8 @@ public class SearchService {
 		final SolrDocumentList documents = queryResponse.getResults();
 
 		// Convert SolrDocuments to Maps
-		final var docs = getDocs(documents);
+		// SolrDocument is a Map in Solr's field order, so no per-document copy
+		final List<Map<String, Object>> docs = Collections.unmodifiableList(documents);
 
 		// Add facets if present
 		final var facets = getFacets(queryResponse);
