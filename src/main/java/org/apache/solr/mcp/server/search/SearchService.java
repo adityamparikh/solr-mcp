@@ -19,7 +19,7 @@ package org.apache.solr.mcp.server.search;
 import io.micrometer.observation.annotation.Observed;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -162,63 +162,47 @@ public class SearchService {
 	}
 
 	/**
-	 * Converts a SolrDocumentList to a List of Maps for optimized JSON
-	 * serialization.
+	 * Converts a SolrDocumentList to a List of Maps for JSON serialization.
 	 *
 	 * <p>
-	 * This method transforms Solr's native document format into a structure that
-	 * can be easily serialized to JSON and consumed by MCP clients. Each document
-	 * becomes a flat map of field names to field values, preserving all data types.
-	 *
-	 * <p>
-	 * <strong>Conversion Process:</strong>
-	 *
-	 * <ul>
-	 * <li>Iterates through each SolrDocument in the list
-	 * <li>Extracts all field names and their corresponding values
-	 * <li>Creates a HashMap for each document with field-value pairs
-	 * <li>Preserves original data types (strings, numbers, dates, arrays)
-	 * </ul>
-	 *
-	 * <p>
-	 * <strong>Performance Optimization:</strong>
-	 *
-	 * <p>
-	 * Pre-allocates the ArrayList with the known document count to minimize memory
-	 * allocations and improve conversion performance for large result sets.
+	 * {@link SolrDocument} already implements {@code Map<String, Object>} (backed
+	 * by a {@link java.util.LinkedHashMap} that preserves field order), so no
+	 * per-document copy is needed here — each {@code SolrDocument} is simply
+	 * widened to its {@code Map} view. This avoids both the allocation of a new map
+	 * per document and the field-order scrambling that a {@link java.util.HashMap}
+	 * copy would introduce.
 	 *
 	 * @param documents
 	 *            the SolrDocumentList to convert from Solr's native format
 	 * @return a List of Maps where each Map represents a document with field names
-	 *         as keys
+	 *         as keys, in Solr's original field order
 	 * @see SolrDocument
 	 * @see SolrDocumentList
 	 */
 	private static List<Map<String, Object>> getDocs(SolrDocumentList documents) {
-		List<Map<String, Object>> docs = new ArrayList<>(documents.size());
-		documents.forEach(doc -> {
-			Map<String, Object> docMap = new HashMap<>();
-			for (String fieldName : doc.getFieldNames()) {
-				docMap.put(fieldName, doc.getFieldValue(fieldName));
-			}
-			docs.add(docMap);
-		});
-		return docs;
+		return new ArrayList<>(documents);
 	}
 
 	/**
 	 * Extracts facet information from a QueryResponse.
 	 *
+	 * <p>
+	 * Uses {@link LinkedHashMap} rather than {@link java.util.HashMap} so the facet
+	 * buckets reach the caller in the order Solr returned them —
+	 * {@code facet.sort=count} (the default this service sets) means that order is
+	 * already highest-count-first, which is exactly the order an LLM consuming this
+	 * response should see.
+	 *
 	 * @param queryResponse
 	 *            The QueryResponse containing facet results
 	 * @return A Map where keys are facet field names and values are Maps of facet
-	 *         values to counts
+	 *         values to counts, both in Solr's original (count-sorted) order
 	 */
 	private static Map<String, Map<String, Long>> getFacets(QueryResponse queryResponse) {
-		Map<String, Map<String, Long>> facets = new HashMap<>();
+		Map<String, Map<String, Long>> facets = new LinkedHashMap<>();
 		if (queryResponse.getFacetFields() != null && !queryResponse.getFacetFields().isEmpty()) {
 			queryResponse.getFacetFields().forEach(facetField -> {
-				Map<String, Long> facetValues = new HashMap<>();
+				Map<String, Long> facetValues = new LinkedHashMap<>();
 				for (FacetField.Count count : facetField.getValues()) {
 					facetValues.put(count.getName(), count.getCount());
 				}
@@ -312,6 +296,9 @@ public class SearchService {
 		if (StringUtils.hasText(query)) {
 			solrQuery.setQuery(query);
 		}
+
+		// fl=score,* — Solr only returns maxScore and per-document score when asked
+		solrQuery.setIncludeScore(true);
 
 		// filter queries
 		if (!CollectionUtils.isEmpty(filterQueries)) {
@@ -464,8 +451,9 @@ public class SearchService {
 				                 * Many results: add a `filterQueries` constraint to narrow, or pass
 				                   `facetFields` on a relevant `string`/`strings` field to surface the distribution
 				                   and pick a sharper filter.
-				   - Inspect `documents` for the actual content. The response includes `maxScore` when
-				     the query is not `*:*`; use it as a relative confidence signal across queries.
+				   - Inspect `documents` for the actual content. Each document carries a relevance
+				     `score`, and the response's `maxScore` is the top score among them; both are most
+				     meaningful as a relative confidence signal for non-`*:*` queries.
 
 				5. Summarize.
 				   - Answer the user's question grounded in the documents found, citing concrete field
