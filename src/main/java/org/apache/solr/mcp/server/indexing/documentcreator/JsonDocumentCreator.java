@@ -20,6 +20,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -109,7 +110,7 @@ public class JsonDocumentCreator implements SolrDocumentCreator {
 	 *             if JSON parsing fails, input validation fails, or the structure
 	 *             is invalid
 	 * @see SolrInputDocument
-	 * @see #addAllFieldsFlat(SolrInputDocument, JsonNode, String)
+	 * @see #addAllFieldsFlat(SolrInputDocument, JsonNode, String, Map)
 	 * @see FieldNameSanitizer#sanitizeFieldName(String)
 	 */
 	public List<SolrInputDocument> create(String json) throws DocumentProcessingException {
@@ -167,12 +168,18 @@ public class JsonDocumentCreator implements SolrDocumentCreator {
 	 */
 	private List<SolrInputDocument> flatten(JsonNode rootNode) {
 		List<SolrInputDocument> documents = new ArrayList<>(rootNode.size());
+		// One memo for the whole call: documents in the same array overwhelmingly
+		// share the same field names, so this turns repeated sanitizeFieldName
+		// invocations (three regex passes each) for the same raw name across
+		// thousands of documents into one. Scoped to this call, not static: the
+		// keys are unbounded user input, so a shared cache would grow without bound.
+		Map<String, String> sanitizedNames = new HashMap<>();
 		if (rootNode.isArray()) {
 			for (JsonNode item : rootNode) {
-				documents.add(toDocument(item));
+				documents.add(toDocument(item, sanitizedNames));
 			}
 		} else {
-			documents.add(toDocument(rootNode));
+			documents.add(toDocument(rootNode, sanitizedNames));
 		}
 		return documents;
 	}
@@ -185,9 +192,9 @@ public class JsonDocumentCreator implements SolrDocumentCreator {
 	 *            the JSON object to flatten
 	 * @return the document, with nested objects flattened and arrays multi-valued
 	 */
-	private SolrInputDocument toDocument(JsonNode node) {
+	private SolrInputDocument toDocument(JsonNode node, Map<String, String> sanitizedNames) {
 		SolrInputDocument doc = new SolrInputDocument();
-		addAllFieldsFlat(doc, node, "");
+		addAllFieldsFlat(doc, node, "", sanitizedNames);
 		return doc;
 	}
 
@@ -218,13 +225,20 @@ public class JsonDocumentCreator implements SolrDocumentCreator {
 	 *            the JSON node to process
 	 * @param prefix
 	 *            current field name prefix for nested object flattening
+	 * @param sanitizedNames
+	 *            memo of raw (prefixed) field name to its sanitized form, scoped to
+	 *            the current {@link #flatten(JsonNode)} call
 	 * @see #convertJsonValue(JsonNode)
 	 * @see FieldNameSanitizer#sanitizeFieldName(String)
 	 */
-	private void addAllFieldsFlat(SolrInputDocument doc, JsonNode node, String prefix) {
+	private void addAllFieldsFlat(SolrInputDocument doc, JsonNode node, String prefix,
+			Map<String, String> sanitizedNames) {
 		Set<Map.Entry<String, JsonNode>> fields = node.properties();
-		fields.forEach(field -> processFieldValue(doc, field.getValue(),
-				FieldNameSanitizer.sanitizeFieldName(prefix + field.getKey())));
+		fields.forEach(field -> {
+			String rawName = prefix + field.getKey();
+			String sanitizedName = sanitizedNames.computeIfAbsent(rawName, FieldNameSanitizer::sanitizeFieldName);
+			processFieldValue(doc, field.getValue(), sanitizedName, sanitizedNames);
+		});
 	}
 
 	/**
@@ -238,8 +252,12 @@ public class JsonDocumentCreator implements SolrDocumentCreator {
 	 *            the JsonNode representing the field value to be processed
 	 * @param fieldName
 	 *            the name of the field to be added to the SolrInputDocument
+	 * @param sanitizedNames
+	 *            memo of raw (prefixed) field name to its sanitized form, scoped to
+	 *            the current {@link #flatten(JsonNode)} call
 	 */
-	private void processFieldValue(SolrInputDocument doc, JsonNode value, String fieldName) {
+	private void processFieldValue(SolrInputDocument doc, JsonNode value, String fieldName,
+			Map<String, String> sanitizedNames) {
 		if (value.isNull()) {
 			return;
 		}
@@ -247,7 +265,7 @@ public class JsonDocumentCreator implements SolrDocumentCreator {
 		if (value.isArray()) {
 			processArrayField(doc, value, fieldName);
 		} else if (value.isObject()) {
-			addAllFieldsFlat(doc, value, fieldName + "_");
+			addAllFieldsFlat(doc, value, fieldName + "_", sanitizedNames);
 		} else {
 			doc.addField(fieldName, convertJsonValue(value));
 		}
