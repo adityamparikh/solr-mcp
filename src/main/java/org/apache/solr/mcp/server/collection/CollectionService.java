@@ -187,14 +187,7 @@ public class CollectionService {
 	/** Prefix for update handler metrics in the Metrics API */
 	private static final String UPDATE_HANDLER_METRIC_PREFIX = "UPDATE./update";
 
-	/**
-	 * Comma-separated prefix list combining {@link #CACHE_METRIC_PREFIX},
-	 * {@link #SELECT_HANDLER_METRIC_PREFIX}, and
-	 * {@link #UPDATE_HANDLER_METRIC_PREFIX}. Solr's Metrics API accepts a
-	 * comma-separated {@code prefix} filter, so {@code get-collection-stats} can
-	 * fetch cache and handler metrics in a single node-wide round trip instead of
-	 * three.
-	 */
+	/** Cache and handler prefixes, comma-separated so one request fetches all */
 	private static final String STATS_METRIC_PREFIXES = String.join(",", CACHE_METRIC_PREFIX,
 			SELECT_HANDLER_METRIC_PREFIX, UPDATE_HANDLER_METRIC_PREFIX);
 
@@ -310,9 +303,9 @@ public class CollectionService {
 	}
 
 	/**
-	 * A {@link LukeRequest} that asks Solr for the {@code index} section only
-	 * (numDocs, segmentCount, ...), skipping the per-field index flags and term
-	 * traversal that {@link #buildIndexStats(LukeResponse)} never reads.
+	 * A {@link LukeRequest} for the {@code index} section only, which is all
+	 * {@link #buildIndexStats(LukeResponse)} reads. Without {@code show=index} Solr
+	 * also lists every field; SolrJ has no setter for it.
 	 */
 	private static final class IndexOnlyLukeRequest extends LukeRequest {
 		@Override
@@ -557,19 +550,13 @@ public class CollectionService {
 	public SolrMetrics getCollectionStats(
 			@McpToolParam(description = "Solr collection to get stats/metrics for") String collection)
 			throws SolrServerException, IOException {
-		if (collection == null || collection.isBlank()) {
-			throw new IllegalArgumentException(BLANK_COLLECTION_NAME_ERROR);
-		}
-
 		// Extract actual collection name from shard name if needed
 		String actualCollection = extractCollectionName(collection);
 
 		// Index statistics using Luke; an unknown collection 404s here
-		LukeRequest lukeRequest = new IndexOnlyLukeRequest();
-		lukeRequest.setNumTerms(0);
 		LukeResponse lukeResponse;
 		try {
-			lukeResponse = lukeRequest.process(solrClient, actualCollection);
+			lukeResponse = new IndexOnlyLukeRequest().process(solrClient, actualCollection);
 		} catch (SolrException e) {
 			if (e.code() == SolrException.ErrorCode.NOT_FOUND.code) {
 				throw new IllegalArgumentException(COLLECTION_NOT_FOUND_ERROR + actualCollection
@@ -581,21 +568,10 @@ public class CollectionService {
 		// Query performance metrics
 		QueryResponse statsResponse = solrClient.query(actualCollection, new SolrQuery(ALL_DOCUMENTS_QUERY).setRows(0));
 
-		// One /admin/metrics call feeds both the cache and handler extractors
-		CacheStats cacheStats = null;
-		HandlerStats handlerStats = null;
-		try {
-			NamedList<Object> statsMetrics = fetchMetrics(actualCollection, STATS_METRIC_PREFIXES);
-			if (statsMetrics != null) {
-				cacheStats = cacheStatsFromCoreMetrics(statsMetrics);
-				handlerStats = handlerStatsFromCoreMetrics(statsMetrics);
-			}
-		} catch (SolrServerException | IOException | SolrException e) {
-			logger.debug("Cache/handler metrics unavailable for collection: {}", actualCollection, e);
-		}
-
-		return new SolrMetrics(buildIndexStats(lukeResponse), buildQueryStats(statsResponse), cacheStats, handlerStats,
-				Instant.now());
+		// One /admin/metrics call feeds both the cache and handler stats
+		NamedList<Object> coreMetrics = fetchMetrics(actualCollection);
+		return new SolrMetrics(buildIndexStats(lukeResponse), buildQueryStats(statsResponse), cacheStats(coreMetrics),
+				handlerStats(coreMetrics), Instant.now());
 	}
 
 	/**
@@ -724,31 +700,18 @@ public class CollectionService {
 	 * @see #isCacheStatsEmpty(CacheStats)
 	 */
 	@Nullable CacheStats getCacheMetrics(String collection) {
-		String actualCollection = extractCollectionName(collection);
 		// An unknown collection has no core in the metrics response, so this is null
-		return fetchCacheMetrics(actualCollection);
+		return cacheStats(fetchMetrics(extractCollectionName(collection)));
 	}
 
 	/**
-	 * Internal cache metrics fetch that assumes the name has already been extracted
-	 * from any shard identifier.
+	 * Extracts {@link CacheStats} from fetched core metrics, or {@code null} if
+	 * there are none.
 	 */
-	private @Nullable CacheStats fetchCacheMetrics(String collectionName) {
-		try {
-			NamedList<Object> coreMetrics = fetchMetrics(collectionName, CACHE_METRIC_PREFIX);
-			return coreMetrics == null ? null : cacheStatsFromCoreMetrics(coreMetrics);
-		} catch (SolrServerException | IOException | SolrException e) {
-			logger.debug("Cache metrics unavailable for collection: {}", collectionName, e);
+	private @Nullable CacheStats cacheStats(@Nullable NamedList<Object> coreMetrics) {
+		if (coreMetrics == null) {
 			return null;
 		}
-	}
-
-	/**
-	 * Extracts and empty-checks {@link CacheStats} from a core metrics
-	 * {@link NamedList} that has already been fetched (e.g. shared with handler
-	 * metrics extraction from a single combined {@code /admin/metrics} call).
-	 */
-	private @Nullable CacheStats cacheStatsFromCoreMetrics(NamedList<Object> coreMetrics) {
 		CacheStats stats = extractCacheStats(coreMetrics);
 		return isCacheStatsEmpty(stats) ? null : stats;
 	}
@@ -834,42 +797,24 @@ public class CollectionService {
 	 *         null if unavailable
 	 * @see HandlerStats
 	 * @see HandlerInfo
-	 * @see #fetchFlatHandlerInfo(String, String, String)
+	 * @see #extractFlatHandlerInfo(NamedList, String)
 	 * @see #isHandlerStatsEmpty(HandlerStats)
 	 */
 	@Nullable HandlerStats getHandlerMetrics(String collection) {
-		String actualCollection = extractCollectionName(collection);
 		// An unknown collection has no core in the metrics response, so this is null
-		return fetchHandlerMetrics(actualCollection);
+		return handlerStats(fetchMetrics(extractCollectionName(collection)));
 	}
 
 	/**
-	 * Internal handler metrics fetch that assumes the name has already been
-	 * extracted from any shard identifier.
+	 * Extracts {@link HandlerStats} from fetched core metrics, or {@code null} if
+	 * there are none. Handler metrics are flat keys (e.g.
+	 * {@code QUERY./select.requests}), reassembled into a {@link HandlerInfo} per
+	 * handler.
 	 */
-	private @Nullable HandlerStats fetchHandlerMetrics(String collectionName) {
-		try {
-			// Handler metrics are flat keys (e.g. QUERY./select.requests) so we
-			// fetch each handler prefix separately and reconstruct HandlerInfo
-			HandlerInfo selectHandler = fetchFlatHandlerInfo(collectionName, SELECT_HANDLER_METRIC_PREFIX,
-					SELECT_HANDLER_KEY);
-			HandlerInfo updateHandler = fetchFlatHandlerInfo(collectionName, UPDATE_HANDLER_METRIC_PREFIX,
-					UPDATE_HANDLER_KEY);
-
-			HandlerStats stats = new HandlerStats(selectHandler, updateHandler);
-			return isHandlerStatsEmpty(stats) ? null : stats;
-		} catch (SolrServerException | IOException | SolrException e) {
-			logger.debug("Handler metrics unavailable for collection: {}", collectionName, e);
+	private @Nullable HandlerStats handlerStats(@Nullable NamedList<Object> coreMetrics) {
+		if (coreMetrics == null) {
 			return null;
 		}
-	}
-
-	/**
-	 * Extracts and empty-checks {@link HandlerStats} from a core metrics
-	 * {@link NamedList} that has already been fetched (e.g. shared with cache
-	 * metrics extraction from a single combined {@code /admin/metrics} call).
-	 */
-	private @Nullable HandlerStats handlerStatsFromCoreMetrics(NamedList<Object> coreMetrics) {
 		HandlerInfo selectHandler = extractFlatHandlerInfo(coreMetrics, SELECT_HANDLER_KEY);
 		HandlerInfo updateHandler = extractFlatHandlerInfo(coreMetrics, UPDATE_HANDLER_KEY);
 		HandlerStats stats = new HandlerStats(selectHandler, updateHandler);
@@ -893,26 +838,30 @@ public class CollectionService {
 	}
 
 	/**
-	 * Fetches metrics from the Solr Metrics API for a given collection and prefix.
+	 * Fetches the cache and handler metrics of a collection's core from the Solr
+	 * Metrics API in one request.
 	 *
 	 * @param collection
 	 *            the collection name
-	 * @param prefix
-	 *            the metric key prefix to filter (e.g. "CACHE.searcher", "HANDLER")
 	 * @return the core-level metrics NamedList, or null if unavailable
 	 */
 	@SuppressWarnings("unchecked")
-	private @Nullable NamedList<Object> fetchMetrics(String collection, String prefix)
-			throws SolrServerException, IOException {
+	private @Nullable NamedList<Object> fetchMetrics(String collection) {
 		ModifiableSolrParams params = new ModifiableSolrParams();
 		params.set(GROUP_PARAM, CORE_GROUP);
-		params.set(PREFIX_PARAM, prefix);
+		params.set(PREFIX_PARAM, STATS_METRIC_PREFIXES);
 		params.set(WT_PARAM, JSON_FORMAT);
 
 		// Metrics API is a node-level endpoint, not per-collection
 		GenericSolrRequest request = new GenericSolrRequest(SolrRequest.METHOD.GET, ADMIN_METRICS_PATH, params);
 
-		NamedList<Object> response = solrClient.request(request);
+		NamedList<Object> response;
+		try {
+			response = solrClient.request(request);
+		} catch (SolrServerException | IOException | SolrException e) {
+			logger.debug("Cache/handler metrics unavailable for collection: {}", collection, e);
+			return null;
+		}
 		NamedList<Object> metrics = (NamedList<Object>) response.get(METRICS_KEY);
 		if (metrics == null || metrics.size() == 0) {
 			return null;
@@ -928,33 +877,6 @@ public class CollectionService {
 			}
 		}
 		return null;
-	}
-
-	/**
-	 * Fetches and extracts handler metrics from flat Solr Metrics API keys.
-	 *
-	 * <p>
-	 * Handler metrics in Solr are stored as flat keys (e.g.
-	 * {@code QUERY./select.requests}) rather than nested objects. This method
-	 * fetches core metrics filtered by the handler prefix and reconstructs a
-	 * {@link HandlerInfo} from the individual flat keys.
-	 *
-	 * @param collection
-	 *            the collection name
-	 * @param metricPrefix
-	 *            the prefix for the Metrics API filter (e.g. {@code QUERY./select})
-	 * @param keyPrefix
-	 *            the flat key prefix including trailing dot (e.g.
-	 *            {@code QUERY./select.})
-	 * @return HandlerInfo with stats, or null if unavailable
-	 */
-	private @Nullable HandlerInfo fetchFlatHandlerInfo(String collection, String metricPrefix, String keyPrefix)
-			throws SolrServerException, IOException {
-		NamedList<Object> coreMetrics = fetchMetrics(collection, metricPrefix);
-		if (coreMetrics == null) {
-			return null;
-		}
-		return extractFlatHandlerInfo(coreMetrics, keyPrefix);
 	}
 
 	/**

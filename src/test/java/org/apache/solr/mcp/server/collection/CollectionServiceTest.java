@@ -44,6 +44,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledInNativeImage;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -407,12 +408,6 @@ class CollectionServiceTest {
 	}
 
 	@Test
-	void getCollectionStats_BlankCollection_ThrowsIllegalArgument() {
-		assertThrows(IllegalArgumentException.class, () -> collectionService.getCollectionStats("   "));
-		assertThrows(IllegalArgumentException.class, () -> collectionService.getCollectionStats(""));
-	}
-
-	@Test
 	void getCollectionStats_MakesExactlyOneMetricsRequestAndNoListCall() throws Exception {
 		// Luke response: only the "index" section is needed for buildIndexStats.
 		NamedList<Object> lukeIndexSection = new NamedList<>();
@@ -441,7 +436,9 @@ class CollectionServiceTest {
 		// list-collections pre-flight, and exactly one Luke request.
 		verify(solrClient, never()).request(any(CollectionAdminRequest.List.class), any());
 		verify(solrClient, times(1)).request(argThat(r -> r instanceof GenericSolrRequest));
-		verify(solrClient, times(1)).request(any(LukeRequest.class), eq("test_collection"));
+		ArgumentCaptor<LukeRequest> luke = ArgumentCaptor.forClass(LukeRequest.class);
+		verify(solrClient).request(luke.capture(), eq("test_collection"));
+		assertEquals("index", luke.getValue().getParams().get("show"), "only the index section, not every field");
 	}
 
 	// Cache metrics tests
@@ -583,8 +580,7 @@ class CollectionServiceTest {
 
 	@Test
 	void getHandlerMetrics_Success() throws Exception {
-		// getHandlerMetrics makes two fetchMetrics calls (select then update);
-		// return select handler data for both calls (second has no update keys -> null)
+		// select handler data only, so the update handler is null
 		when(solrClient.request(any(SolrRequest.class))).thenReturn(createMockSelectHandlerData());
 
 		HandlerStats result = collectionService.getHandlerMetrics("test_collection");
