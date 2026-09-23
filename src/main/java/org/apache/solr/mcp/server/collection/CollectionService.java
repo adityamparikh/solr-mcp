@@ -42,6 +42,7 @@ import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.client.solrj.response.SolrPingResponse;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.params.ModifiableSolrParams;
+import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.mcp.server.config.SolrConfigurationProperties;
 import org.apache.solr.mcp.server.util.PromptNames;
@@ -186,6 +187,23 @@ public class CollectionService {
 	/** Prefix for update handler metrics in the Metrics API */
 	private static final String UPDATE_HANDLER_METRIC_PREFIX = "UPDATE./update";
 
+	/**
+	 * Comma-separated prefix list combining {@link #CACHE_METRIC_PREFIX},
+	 * {@link #SELECT_HANDLER_METRIC_PREFIX}, and
+	 * {@link #UPDATE_HANDLER_METRIC_PREFIX}. Solr's Metrics API accepts a
+	 * comma-separated {@code prefix} filter, so {@code get-collection-stats} can
+	 * fetch cache and handler metrics in a single node-wide round trip instead of
+	 * three.
+	 */
+	private static final String STATS_METRIC_PREFIXES = String.join(",", CACHE_METRIC_PREFIX,
+			SELECT_HANDLER_METRIC_PREFIX, UPDATE_HANDLER_METRIC_PREFIX);
+
+	/** Request parameter name for restricting the Luke handler's output sections */
+	private static final String SHOW_PARAM = "show";
+
+	/** Luke {@value #SHOW_PARAM} value restricting output to the index section */
+	private static final String SHOW_INDEX_VALUE = "index";
+
 	// ========================================
 	// Constants for Response Parsing
 	// ========================================
@@ -289,6 +307,20 @@ public class CollectionService {
 	public CollectionService(SolrClient solrClient, ObjectMapper objectMapper) {
 		this.solrClient = solrClient;
 		this.objectMapper = objectMapper;
+	}
+
+	/**
+	 * A {@link LukeRequest} that asks Solr for the {@code index} section only
+	 * (numDocs, segmentCount, ...), skipping the per-field index flags and term
+	 * traversal that {@link #buildIndexStats(LukeResponse)} never reads.
+	 */
+	private static final class IndexOnlyLukeRequest extends LukeRequest {
+		@Override
+		public SolrParams getParams() {
+			ModifiableSolrParams params = new ModifiableSolrParams(super.getParams());
+			params.set(SHOW_PARAM, SHOW_INDEX_VALUE);
+			return params;
+		}
 	}
 
 	/**
@@ -489,9 +521,10 @@ public class CollectionService {
 	 * <strong>Validation:</strong>
 	 *
 	 * <p>
-	 * The method validates that the specified collection exists before attempting
-	 * to collect metrics. If the collection is not found, an
-	 * {@code IllegalArgumentException} is thrown with a descriptive error message.
+	 * Collection existence is not checked with a separate pre-flight call: the Luke
+	 * request below already 404s for an unknown collection, and that response is
+	 * translated into an {@code IllegalArgumentException} with a descriptive error
+	 * message.
 	 *
 	 * <p>
 	 * <strong>MCP Tool Usage:</strong>
@@ -518,31 +551,51 @@ public class CollectionService {
 	@McpTool(
 			name = "get-collection-stats",
 			annotations = @McpTool.McpAnnotations(readOnlyHint = true),
-			description = "Get stats/metrics on a Solr collection. On Solr 10+ cacheStats and"
-					+ " handlerStats are always null because the /admin/mbeans endpoint was removed"
-					+ " from Solr; this is expected and not an error.")
+			description = "Get stats/metrics on a Solr collection. cacheStats and handlerStats may be"
+					+ " null when Solr's /admin/metrics API does not provide them for the collection;"
+					+ " this is expected and not an error.")
 	public SolrMetrics getCollectionStats(
 			@McpToolParam(description = "Solr collection to get stats/metrics for") String collection)
 			throws SolrServerException, IOException {
+		if (collection == null || collection.isBlank()) {
+			throw new IllegalArgumentException(BLANK_COLLECTION_NAME_ERROR);
+		}
+
 		// Extract actual collection name from shard name if needed
 		String actualCollection = extractCollectionName(collection);
 
-		// Validate collection exists
-		if (!validateCollectionExists(actualCollection)) {
-			throw new IllegalArgumentException(COLLECTION_NOT_FOUND_ERROR + actualCollection
-					+ ". Hint: call list-collections to see available collections.");
+		// Index statistics using Luke; an unknown collection 404s here
+		LukeRequest lukeRequest = new IndexOnlyLukeRequest();
+		lukeRequest.setNumTerms(0);
+		LukeResponse lukeResponse;
+		try {
+			lukeResponse = lukeRequest.process(solrClient, actualCollection);
+		} catch (SolrException e) {
+			if (e.code() == SolrException.ErrorCode.NOT_FOUND.code) {
+				throw new IllegalArgumentException(COLLECTION_NOT_FOUND_ERROR + actualCollection
+						+ ". Hint: call list-collections to see available collections.", e);
+			}
+			throw e;
 		}
-
-		// Index statistics using Luke
-		LukeRequest lukeRequest = new LukeRequest();
-		lukeRequest.setIncludeIndexFieldFlags(true);
-		LukeResponse lukeResponse = lukeRequest.process(solrClient, actualCollection);
 
 		// Query performance metrics
 		QueryResponse statsResponse = solrClient.query(actualCollection, new SolrQuery(ALL_DOCUMENTS_QUERY).setRows(0));
 
-		return new SolrMetrics(buildIndexStats(lukeResponse), buildQueryStats(statsResponse),
-				fetchCacheMetrics(actualCollection), fetchHandlerMetrics(actualCollection), Instant.now());
+		// One /admin/metrics call feeds both the cache and handler extractors
+		CacheStats cacheStats = null;
+		HandlerStats handlerStats = null;
+		try {
+			NamedList<Object> statsMetrics = fetchMetrics(actualCollection, STATS_METRIC_PREFIXES);
+			if (statsMetrics != null) {
+				cacheStats = cacheStatsFromCoreMetrics(statsMetrics);
+				handlerStats = handlerStatsFromCoreMetrics(statsMetrics);
+			}
+		} catch (SolrServerException | IOException | SolrException e) {
+			logger.debug("Cache/handler metrics unavailable for collection: {}", actualCollection, e);
+		}
+
+		return new SolrMetrics(buildIndexStats(lukeResponse), buildQueryStats(statsResponse), cacheStats, handlerStats,
+				Instant.now());
 	}
 
 	/**
@@ -665,42 +718,39 @@ public class CollectionService {
 	 *            the collection name to retrieve cache metrics for
 	 * @return CacheStats object with all cache performance metrics, or null if
 	 *         unavailable
-	 * @throws SolrServerException
-	 *             if there are errors communicating with Solr
-	 * @throws IOException
-	 *             if there are I/O errors during communication
 	 * @see CacheStats
 	 * @see CacheInfo
 	 * @see #extractCacheStats(NamedList)
 	 * @see #isCacheStatsEmpty(CacheStats)
 	 */
-	@Nullable CacheStats getCacheMetrics(String collection) throws SolrServerException, IOException {
+	@Nullable CacheStats getCacheMetrics(String collection) {
 		String actualCollection = extractCollectionName(collection);
-
-		if (!validateCollectionExists(actualCollection)) {
-			return null;
-		}
-
+		// An unknown collection has no core in the metrics response, so this is null
 		return fetchCacheMetrics(actualCollection);
 	}
 
 	/**
-	 * Internal cache metrics fetch that assumes the collection has already been
-	 * validated and the name has been extracted from any shard identifier.
+	 * Internal cache metrics fetch that assumes the name has already been extracted
+	 * from any shard identifier.
 	 */
 	private @Nullable CacheStats fetchCacheMetrics(String collectionName) {
 		try {
 			NamedList<Object> coreMetrics = fetchMetrics(collectionName, CACHE_METRIC_PREFIX);
-			if (coreMetrics == null) {
-				return null;
-			}
-
-			CacheStats stats = extractCacheStats(coreMetrics);
-			return isCacheStatsEmpty(stats) ? null : stats;
+			return coreMetrics == null ? null : cacheStatsFromCoreMetrics(coreMetrics);
 		} catch (SolrServerException | IOException | SolrException e) {
 			logger.debug("Cache metrics unavailable for collection: {}", collectionName, e);
 			return null;
 		}
+	}
+
+	/**
+	 * Extracts and empty-checks {@link CacheStats} from a core metrics
+	 * {@link NamedList} that has already been fetched (e.g. shared with handler
+	 * metrics extraction from a single combined {@code /admin/metrics} call).
+	 */
+	private @Nullable CacheStats cacheStatsFromCoreMetrics(NamedList<Object> coreMetrics) {
+		CacheStats stats = extractCacheStats(coreMetrics);
+		return isCacheStatsEmpty(stats) ? null : stats;
 	}
 
 	/**
@@ -782,28 +832,20 @@ public class CollectionService {
 	 *            the collection name to retrieve handler metrics for
 	 * @return HandlerStats object with performance metrics for all handlers, or
 	 *         null if unavailable
-	 * @throws SolrServerException
-	 *             if there are errors communicating with Solr
-	 * @throws IOException
-	 *             if there are I/O errors during communication
 	 * @see HandlerStats
 	 * @see HandlerInfo
 	 * @see #fetchFlatHandlerInfo(String, String, String)
 	 * @see #isHandlerStatsEmpty(HandlerStats)
 	 */
-	@Nullable HandlerStats getHandlerMetrics(String collection) throws SolrServerException, IOException {
+	@Nullable HandlerStats getHandlerMetrics(String collection) {
 		String actualCollection = extractCollectionName(collection);
-
-		if (!validateCollectionExists(actualCollection)) {
-			return null;
-		}
-
+		// An unknown collection has no core in the metrics response, so this is null
 		return fetchHandlerMetrics(actualCollection);
 	}
 
 	/**
-	 * Internal handler metrics fetch that assumes the collection has already been
-	 * validated and the name has been extracted from any shard identifier.
+	 * Internal handler metrics fetch that assumes the name has already been
+	 * extracted from any shard identifier.
 	 */
 	private @Nullable HandlerStats fetchHandlerMetrics(String collectionName) {
 		try {
@@ -820,6 +862,18 @@ public class CollectionService {
 			logger.debug("Handler metrics unavailable for collection: {}", collectionName, e);
 			return null;
 		}
+	}
+
+	/**
+	 * Extracts and empty-checks {@link HandlerStats} from a core metrics
+	 * {@link NamedList} that has already been fetched (e.g. shared with cache
+	 * metrics extraction from a single combined {@code /admin/metrics} call).
+	 */
+	private @Nullable HandlerStats handlerStatsFromCoreMetrics(NamedList<Object> coreMetrics) {
+		HandlerInfo selectHandler = extractFlatHandlerInfo(coreMetrics, SELECT_HANDLER_KEY);
+		HandlerInfo updateHandler = extractFlatHandlerInfo(coreMetrics, UPDATE_HANDLER_KEY);
+		HandlerStats stats = new HandlerStats(selectHandler, updateHandler);
+		return isHandlerStatsEmpty(stats) ? null : stats;
 	}
 
 	/**
@@ -970,53 +1024,6 @@ public class CollectionService {
 		// "_shard" anywhere would truncate legitimate collection names such as
 		// "orders_shard_archive" down to "orders".
 		return SHARD_SUFFIX_PATTERN.matcher(collectionOrShard).replaceFirst("");
-	}
-
-	/**
-	 * Validates that a specified collection exists in the Solr cluster.
-	 *
-	 * <p>
-	 * Performs collection existence validation by checking against the list of
-	 * available collections. Supports both exact collection name matches and
-	 * shard-based matching for SolrCloud environments.
-	 *
-	 * <p>
-	 * <strong>Validation Strategy:</strong>
-	 *
-	 * <ol>
-	 * <li><strong>Exact Match</strong>: Checks if the collection name exists
-	 * exactly
-	 * <li><strong>Shard Match</strong>: Checks if any shards start with
-	 * "collection{@value #SHARD_SUFFIX}" pattern
-	 * </ol>
-	 *
-	 * <p>
-	 * This dual approach ensures compatibility with SolrCloud environments where
-	 * shard names may be returned alongside collection names.
-	 *
-	 * @param collection
-	 *            the collection name to validate
-	 * @return true if the collection exists (either exact or shard match), false
-	 *         otherwise
-	 * @throws SolrServerException
-	 *             if there are errors communicating with Solr
-	 * @throws IOException
-	 *             if there are I/O errors during communication
-	 * @see #listCollections()
-	 * @see #extractCollectionName(String)
-	 */
-	private boolean validateCollectionExists(String collection) throws SolrServerException, IOException {
-		List<String> collections = listCollections();
-
-		// Check for exact match first
-		if (collections.contains(collection)) {
-			return true;
-		}
-
-		// Check if any of the returned collections start with the collection name (for
-		// shard
-		// names)
-		return collections.stream().anyMatch(c -> c.startsWith(collection + SHARD_SUFFIX));
 	}
 
 	/**
