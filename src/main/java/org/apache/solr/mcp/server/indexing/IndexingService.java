@@ -227,7 +227,11 @@ public class IndexingService {
 			@McpToolParam(
 					description = "Documents to index: a JSON array with one object per document") List<Map<String, Object>> documents)
 			throws IOException, SolrServerException {
-		List<SolrInputDocument> schemalessDoc = indexingDocumentCreator.createSchemalessDocumentsFromJson(documents);
+		return indexJson(collection, indexingDocumentCreator.createSchemalessDocumentsFromJson(documents));
+	}
+
+	private String indexJson(String collection, List<SolrInputDocument> schemalessDoc)
+			throws IOException, SolrServerException {
 		int successCount = indexDocuments(collection, schemalessDoc);
 		return "Successfully indexed " + successCount + " of " + schemalessDoc.size() + " documents into collection '"
 				+ collection + "'" + describeIndexedFields(schemalessDoc);
@@ -398,6 +402,43 @@ public class IndexingService {
 		int successCount = indexDocuments(collection, schemalessDoc);
 		return "Successfully indexed " + successCount + " of " + schemalessDoc.size() + " documents into collection '"
 				+ collection + "'";
+	}
+
+	/**
+	 * Trailing sentence for indexing tool descriptions: prepare the schema before
+	 * indexing rather than relying on schemaless guesses.
+	 */
+	static final String SCHEMA_FIRST_GUIDANCE = "Before indexing, use get-schema and add-fields (or design-schema) "
+			+ "to define compatible fields. Use string with docValues for categories/facets, text_general for prose, "
+			+ "and explicit numeric types and multiValued settings. Do not rely on schemaless type guessing; "
+			+ "existing field types cannot be changed with these tools.";
+
+	/**
+	 * Indexes a whole document set given as text, the way the inline tool for its
+	 * format does: CSV and XML go to Solr's own update handler unchanged, JSON and
+	 * Markdown are parsed by the server. Used by {@code index-url}, whose payload
+	 * arrives as text whatever its format.
+	 *
+	 * @param collection
+	 *            target collection
+	 * @param payload
+	 *            the whole document set as text
+	 * @param format
+	 *            {@code json}, {@code csv}, {@code xml} or {@code markdown}
+	 * @return the summary the matching inline tool returns
+	 * @throws IOException
+	 *             on Solr communication failure
+	 * @throws SolrServerException
+	 *             if Solr rejects the update
+	 */
+	String indexPayload(String collection, String payload, String format) throws IOException, SolrServerException {
+		return switch (format) {
+			case "json" -> indexJson(collection, indexingDocumentCreator.createSchemalessDocumentsFromJson(payload));
+			case "csv" -> indexCsvDocuments(collection, payload);
+			case "xml" -> indexXmlDocuments(collection, payload);
+			case "markdown" -> indexMarkdownDocuments(collection, payload);
+			default -> throw new IllegalArgumentException("Unsupported document format: " + format);
+		};
 	}
 
 	/**
@@ -618,7 +659,21 @@ public class IndexingService {
 				%s
 
 				3. Index the documents.
-				   - Call `%s` with `collection=%s` and `%s=<%s>`.
+				   - If the data is reachable at an http(s) URL and is within the server's size limit
+				     (10 MB unless the operator changed it), prefer `index-url` with `collection` and
+				     `url`; optionally override the detected `format`. The URL is fetched by the MCP
+				     server, so it must be reachable from the server's network and its host must be on
+				     the server's allow-list (GitHub raw content by default).
+				   - If the data is larger than that limit, or is a file on the user's machine that is
+				     too large to paste, do not push it through this conversation. Give the user this
+				     command to run where the file is, with their collection name and Solr URL filled
+				     in, then continue with step 4:
+				     `bin/solr post -c <collection> <file>`
+				     or `curl -X POST '<solr-url>/<collection>/update?commit=true' -H 'Content-Type: application/json' --data-binary @<file>`
+				     (use `Content-Type: text/csv` or `application/xml` for those formats).
+				   - Otherwise, for small pasted or attached data, call `%s` with `collection=%s` and
+				     `%s=<%s>`. Use one path only; do not also send inline data after a successful URL
+				     call.
 				   - The tool commits at the end. For JSON and markdown the return value is the count
 				     of successfully indexed documents; for CSV and XML it confirms that Solr accepted
 				     the whole payload, and step 4 is where you learn the count.
@@ -633,7 +688,8 @@ public class IndexingService {
 
 				Next step suggestion: once data is indexed, the `search-collection` prompt drives
 				searching it.
-				""".formatted(indexTool.format(), collection, collection, sampleSection, indexTool.name(), collection,
-				indexTool.paramName(), indexTool.payload(), collection);
+				"""
+				.formatted(indexTool.format(), collection, collection, sampleSection, indexTool.name(), collection,
+						indexTool.paramName(), indexTool.payload(), collection);
 	}
 }
