@@ -9,11 +9,14 @@ When running in **HTTP mode**, the Solr MCP Server exports telemetry data via Op
 
 | Signal | Backend | What it shows |
 |--------|---------|---------------|
-| **Traces** | Tempo | Distributed traces for every MCP tool invocation, Solr query, and HTTP request |
-| **Metrics** | Mimir/Prometheus | JVM stats, HTTP request rates, Solr query latencies, cache hit ratios |
-| **Logs** | Loki | Structured application logs correlated with trace IDs |
+| **Traces** | Tempo | A trace per HTTP request, with a span for the MCP tool it invoked |
+| **Metrics** | Mimir/Prometheus | HTTP request rate and latency, per-tool latency, JVM, Tomcat and Spring Security metrics |
+| **Logs** | Loki | Application logs, each tagged with the trace and span it was written under |
 
-Every MCP tool invocation creates a trace span: search, indexing (JSON, CSV, XML), collection operations (list, stats, health, create), and schema retrieval. All incoming HTTP requests and outgoing Solr calls are automatically traced.
+Every MCP tool invocation creates a span named after the service class and method, such as
+`SearchService#search` or `CollectionService#checkHealth`, inside the trace of the HTTP
+request that carried it. The call to Solr is not a separate span; its time is part of the
+tool span.
 
 ***
 
@@ -32,8 +35,8 @@ This starts:
 | Service | URL | Purpose |
 |---------|-----|---------|
 | Grafana | http://localhost:3000 | Dashboards and exploration (no auth required) |
-| OTLP gRPC | localhost:4317 | Trace/metric/log ingestion (gRPC) |
-| OTLP HTTP | localhost:4318 | Trace/metric/log ingestion (HTTP) |
+| OTLP HTTP | localhost:4318 | Trace/metric/log ingestion — **the port this server exports to** |
+| OTLP gRPC | localhost:4317 | Also accepted by the collector; not used by this server |
 
 ### Run the Server with Observability ###
 
@@ -45,9 +48,14 @@ The server auto-configures OTLP export when the LGTM stack is running. Default c
 
 ```properties
 management.tracing.sampling.probability=1.0     # 100% sampling (dev)
-otel.exporter.otlp.endpoint=http://localhost:4317
-otel.exporter.otlp.protocol=grpc
+management.opentelemetry.tracing.export.otlp.endpoint=${OTEL_TRACES_URL:http://localhost:4318/v1/traces}
+management.otlp.metrics.export.url=${OTEL_METRICS_URL:http://localhost:4318/v1/metrics}
+management.opentelemetry.logging.export.otlp.endpoint=${OTEL_LOGS_URL:http://localhost:4318/v1/logs}
 ```
+
+Export goes over **OTLP/HTTP on port 4318**, with a separate full URL per signal.
+Each endpoint is a complete path ending in `/v1/traces`, `/v1/metrics` or
+`/v1/logs` — not a base address.
 
 ***
 
@@ -62,30 +70,67 @@ Open [http://localhost:3000](http://localhost:3000) and click **Explore** in the
 
         {.service.name="solr-mcp"}
 
-3. Click on a trace to see the span waterfall&mdash;each MCP tool invocation, Solr query, and HTTP request is a separate span
+3. Click on an `http post /mcp` trace to see the span waterfall: the security filter
+   chain, then one span for the tool (`SearchService#search`,
+   `CollectionService#checkHealth`, &hellip;) with its duration. Each span's **Logs for
+   this span** link opens the lines that request logged in Loki.
 
 ### View Logs (Loki) ###
 
 1. Select **Loki** as the data source
 2. Use LogQL to search:
 
-        {service_name="solr-mcp"} |= "search"
+        {service_name="solr-mcp"} | trace_id != ""
 
-3. Logs are automatically correlated with trace IDs&mdash;click a log line to jump to its trace
+   That keeps only lines written during a request; drop the filter to include startup
+   and lifecycle lines, which have no trace.
+3. Expand a line and follow its **Trace** link to open the request in Tempo.
+
+A successful tool call writes no log lines, so its **Logs for this span** link is always
+empty. To see a trace with a log attached, make one call that fails; a health check on a
+collection that does not exist logs a `WARN` under its `CollectionService#checkHealth`
+span:
+
+```bash
+curl -s -X POST http://localhost:8080/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","method":"tools/call","id":2,"params":{"name":"check-health","arguments":{"collection":"no-such-collection"}}}'
+```
+
+With security on, add `-H "Authorization: Bearer $TOKEN"`; see [Security](/mcp/security.html).
 
 ### View Metrics (Prometheus) ###
 
 1. Select **Prometheus** as the data source
 2. Example queries:
 
-        # HTTP request rate
-        rate(http_server_requests_seconds_count[5m])
+        # MCP request rate, by method and status
+        sum by (method, status) (rate(http_server_requests_milliseconds_count{job="solr-mcp", uri="/mcp"}[5m]))
 
-        # JVM memory usage
-        jvm_memory_used_bytes
+        # Average MCP request latency (ms)
+        sum(rate(http_server_requests_milliseconds_sum{job="solr-mcp", uri="/mcp"}[5m]))
+          / sum(rate(http_server_requests_milliseconds_count{job="solr-mcp", uri="/mcp"}[5m]))
 
-        # Request latency (p99)
-        histogram_quantile(0.99, rate(http_server_requests_seconds_bucket[5m]))
+        # Average latency per tool (ms)
+        sum by (class, method) (rate(method_observed_milliseconds_sum{job="solr-mcp"}[5m]))
+          / sum by (class, method) (rate(method_observed_milliseconds_count{job="solr-mcp"}[5m]))
+
+        # JVM memory, heap vs non-heap
+        sum by (area) (jvm_memory_used_bytes{job="solr-mcp"})
+
+   Timers are exported over OTLP in **milliseconds**, so their names end in
+   `_milliseconds_*`; queries written for `http_server_requests_seconds_*` return nothing.
+   Metrics are exported once a minute, and a `rate()` needs two exports, so allow two
+   minutes after the first calls. A tool with no calls in the window shows `NaN`.
+
+   Timers publish only the `+Inf` bucket by default, so percentiles return `NaN`. Enable
+   buckets for HTTP requests with
+   `management.metrics.distribution.percentiles-histogram.http.server.requests=true`,
+   then:
+
+        # MCP request latency, p99 (ms)
+        histogram_quantile(0.99, sum by (le) (rate(http_server_requests_milliseconds_bucket{job="solr-mcp", uri="/mcp"}[5m])))
 
 ***
 
@@ -104,10 +149,25 @@ curl http://localhost:8080/actuator/loggers       # Logger levels
 
 ## Production Configuration ##
 
-For production, reduce the sampling rate and configure the OTLP endpoint for your collector:
+For production, reduce the sampling rate and point each signal at your collector:
 
 ```bash
-export OTEL_SAMPLING_PROBABILITY=0.1           # 10% sampling
-export OTEL_TRACES_URL=https://otel-collector.example.com:4317
+export OTEL_SAMPLING_PROBABILITY=0.1                                          # 10% sampling
+export OTEL_TRACES_URL=https://otel-collector.example.com/v1/traces
+export OTEL_METRICS_URL=https://otel-collector.example.com/v1/metrics
+export OTEL_LOGS_URL=https://otel-collector.example.com/v1/logs
 PROFILES=http java -jar build/libs/solr-mcp-1.0.0-SNAPSHOT.jar
 ```
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `OTEL_SAMPLING_PROBABILITY` | `1.0` | Fraction of traces sampled |
+| `OTEL_TRACES_URL` | `http://localhost:4318/v1/traces` | OTLP/HTTP traces endpoint |
+| `OTEL_METRICS_URL` | `http://localhost:4318/v1/metrics` | OTLP/HTTP metrics endpoint |
+| `OTEL_LOGS_URL` | `http://localhost:4318/v1/logs` | OTLP/HTTP logs endpoint |
+
+> **Upgrading from a pre-Spring-Boot-4 release?** `OTEL_TRACES_URL` changed meaning.
+> It used to be a *base* endpoint on the gRPC port (`http://collector:4317`); it is now
+> the *complete* traces URL on the HTTP port (`http://collector:4318/v1/traces`). A value
+> carried over unchanged will not error — traces simply stop arriving. `OTEL_METRICS_URL`
+> and `OTEL_LOGS_URL` are new; previously all three signals shared one endpoint.
