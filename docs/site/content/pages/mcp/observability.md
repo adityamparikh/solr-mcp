@@ -103,15 +103,11 @@ curl -s -X POST http://localhost:8080/mcp \
 
 Run it a few times&mdash;each call is one trace and one more request in the metrics.
 
-A successful call writes no log lines, so it has nothing to show in Loki. To see a trace
-with a log attached, make one call that fails; a health check on a collection that does not
-exist logs a `WARN` inside the request:
+Every tool call also logs one line when it finishes, written under the request's trace:
 
-```bash
-curl -s -X POST http://localhost:8080/mcp \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json, text/event-stream" \
-  -d '{"jsonrpc":"2.0","method":"tools/call","id":2,"params":{"name":"check-health","arguments":{"collection":"no-such-collection"}}}'
+```text
+INFO  ... o.a.s.m.s.o.ToolCallLoggingHandler : CollectionService#listCollections completed in 12 ms
+WARN  ... o.a.s.m.s.o.ToolCallLoggingHandler : SearchService#search failed after 9 ms: java.lang.IllegalArgumentException: ...
 ```
 
 Traces take up to a minute to become searchable in Tempo, and metrics are exported once
@@ -169,9 +165,10 @@ The fastest way through all three signals for one request:
    matching lines in **Loki**, filtered by trace ID. This works because the OTEL logback
    appender (`logback-spring.xml`) tags every log line with the active trace and span ID.
    The link filters on the trace, so it finds the same lines from any span in it.
-3. The link comes up empty for a trace that logged nothing, which is every successful
-   tool call: the services log only on failure. The `check-health` call above is the one
-   to follow; its `WARN` sits under the `collection-service#check-health` span.
+3. For a tool call, the link always finds at least the `completed in` or `failed after`
+   line above; any warning the tool logs itself, such as `check-health` on a missing
+   collection, appears alongside it. A request that runs no tool, such as `tools/list`,
+   logs nothing, so its link is empty.
 4. From a log line, the **Trace** link takes you back to its trace.
 5. **Metrics** aren't per-request the same way&mdash;there's no single span/log &harr;
    metric-sample link&mdash;but the PromQL queries above will show the aggregate effect
@@ -200,7 +197,7 @@ curl http://localhost:8080/actuator/loggers       # Logger levels
 |---------|-------------|-----|
 | No traces/metrics/logs show up in Grafana at all | LGTM was never started&mdash;`bootRun` does not start it in either mode | `docker compose up -d lgtm` |
 | Tempo finds nothing right after the calls | Traces take up to a minute to become searchable; metrics are exported once a minute | Wait and re-run the query |
-| **Logs for this span** is empty | The request logged nothing; successful tool calls never do | Expected; follow a failing call such as `check-health` on a missing collection |
+| **Logs for this span** is empty | The request ran no tool (e.g. `tools/list`), so nothing logged under it | Expected; open a `tools/call` trace instead |
 | `jvm_*` or `http_server_requests_seconds_*` returns nothing in Grafana | Those are Micrometer metrics, served only at `/actuator/prometheus` | Query `http_server_request_duration_seconds_*` in Grafana, or curl the actuator |
 | Traces appear but stop after a restart | The `otel-lgtm` container has no persistent volume | Expected; re-run your workload after restarting `lgtm` |
 | `otel.exporter.otlp.endpoint` connection refused | Running the server outside the `search` Docker network (e.g. inside its own container) while LGTM is on the host | Point `OTEL_TRACES_URL` at a reachable host, or join the same Docker network |
