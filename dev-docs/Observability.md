@@ -134,8 +134,8 @@ span. A representative `/mcp` search request looks like this:
 
 The Drilldown sidebar provides quick access to related telemetry:
 - **Metrics** - View application and JVM metrics (request rates, latencies, memory usage)
-- **Logs** - View correlated logs with the same trace ID (empty for a request that logged
-  nothing, which is every successful tool call; the services log only on failure)
+- **Logs** - View correlated logs with the same trace ID; every tool call writes at least
+  one `ToolCallLoggingHandler` line (`completed in` / `failed after`) under its trace
 - **Traces** - The current distributed trace view
 - **Profiles** - CPU and memory profiling data (if configured)
 

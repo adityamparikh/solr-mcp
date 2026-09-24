@@ -83,19 +83,17 @@ Open [http://localhost:3000](http://localhost:3000) and click **Explore** in the
    and lifecycle lines, which have no trace.
 3. Expand a line and follow its **Trace** link to open the request in Tempo.
 
-A successful tool call writes no log lines, so its **Logs for this span** link is always
-empty. To see a trace with a log attached, make one call that fails; a health check on a
-collection that does not exist logs a `WARN` under its `CollectionService#checkHealth`
-span:
+Every tool call logs one line when it finishes, written under the request's trace, so a
+tool call's **Logs for this span** link always finds at least that line:
 
-```bash
-curl -s -X POST http://localhost:8080/mcp \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json, text/event-stream" \
-  -d '{"jsonrpc":"2.0","method":"tools/call","id":2,"params":{"name":"check-health","arguments":{"collection":"no-such-collection"}}}'
+```text
+INFO  ... o.a.s.m.s.o.ToolCallLoggingHandler : SearchService#search completed in 43 ms
+WARN  ... o.a.s.m.s.o.ToolCallLoggingHandler : SearchService#search failed after 9 ms: java.lang.IllegalArgumentException: ...
 ```
 
-With security on, add `-H "Authorization: Bearer $TOKEN"`; see [Security](security/http.md).
+Any warning the tool logs itself, such as `check-health` on a missing collection, appears
+alongside it. A request that runs no tool, such as `tools/list`, logs nothing, so its link
+is empty.
 
 ### View Metrics (Prometheus) ###
 
