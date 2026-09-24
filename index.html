@@ -2121,9 +2121,9 @@ cd solr-mcp
     <summary>Observability — traces and logs in Grafana <span class="hint">HTTP mode, one extra container</span></summary>
     <div class="panel-body">
       <p>
-        In HTTP mode the server exports <b>traces</b> and <b>logs</b> over OpenTelemetry. Point it
-        at Grafana's all-in-one LGTM container and every tool call shows up as a trace, with a span
-        per tool. About five minutes. Assumes Solr from step 1 is running. Apart from the server
+        In HTTP mode the server exports <b>traces</b>, <b>logs</b> and <b>request metrics</b> over
+        OpenTelemetry. Point it at Grafana's all-in-one LGTM container and every tool call shows up
+        as a trace, with a span per tool and any log lines it wrote linked to it. About five minutes. Assumes Solr from step 1 is running. Apart from the server
         command, commands are bash (macOS, Linux, WSL or Git Bash). STDIO mode exports
         nothing, so pick <b>HTTP</b> under <em>Transport</em> in <a href="#s0">step 0</a> first.
       </p>
@@ -2166,7 +2166,12 @@ java -jar C:/path/to/solr-mcp-1.0.0-SNAPSHOT.jar</code></pre></div>
   curl -s -X POST http://localhost:8080/mcp -H "Content-Type: application/json" \
     -H "Accept: application/json, text/event-stream" \
     -d "{\"jsonrpc\":\"2.0\",\"method\":\"tools/call\",\"id\":1,\"params\":{\"name\":\"search\",\"arguments\":{\"collection\":\"shows-auto\",\"query\":\"$q\"}}}" &gt;/dev/null
-done</code></pre></div>
+done
+
+<span class="tok-c"># one call that fails on purpose, so there is a log line to follow</span>
+curl -s -X POST http://localhost:8080/mcp -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","method":"tools/call","id":2,"params":{"name":"check-health","arguments":{"collection":"no-such-collection"}}}' &gt;/dev/null</code></pre></div>
 
       <h3>4. Look at it</h3>
       <p style="font-size:.86rem;color:var(--ink-2)">
@@ -2179,20 +2184,25 @@ done</code></pre></div>
         chain and one span named for the tool — <code class="inline">search-service#search</code>,
         <code class="inline">indexing-service#…</code> — with its duration. Traces take up to a minute to
         become searchable — an empty result right after the calls is normal, so give it thirty
-        seconds and run the query again. For the application's logs, pick <b>Loki</b> and run
-        <code class="inline">{service_name="solr-mcp"}</code>.
+        seconds and run the query again.
       </p>
+      <p style="font-size:.86rem;color:var(--ink-2)">
+        Now open the <code class="inline">collection-service#check-health</code> trace from the
+        failing call and click <b>Logs for this span</b>: Loki opens on its
+        <code class="inline">WARN Health check failed</code> line, matched by trace ID. Each
+        log line links back the same way. Request metrics land in <b>Prometheus</b> once a
+        minute; pick it in Explore and run:
+      </p>
+      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>http_server_request_duration_seconds_count{job="solr-mcp"}</code></pre></div>
 
       <div class="note warn">
         <span class="tag">What you won't see</span>
         <p>
-          <b>Metrics are not exported to Grafana</b> — they're served for scraping instead, so the
-          Prometheus data source there only has the collector's own numbers. Read them straight
-          from the server:
-          <code class="inline">curl -s localhost:8080/actuator/prometheus | grep http_server_requests_seconds_count</code>.
-          The Solr request itself has no child span, and request handling logs nothing, so a
-          trace's <em>Logs for this span</em> link comes up empty; the logs in Loki are startup
-          and lifecycle lines.
+          <b>Logs on successful calls</b> — the services only log when something fails, so for
+          the searches <em>Logs for this span</em> comes up empty. That's expected, not broken.
+          <b>JVM metrics</b> aren't exported either; they're served for scraping:
+          <code class="inline">curl -s localhost:8080/actuator/prometheus | grep jvm_memory_used</code>.
+          And the call to Solr has no span of its own; its time is inside the tool span.
         </p>
       </div>
 
