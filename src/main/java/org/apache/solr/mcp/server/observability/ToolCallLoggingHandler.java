@@ -23,6 +23,7 @@ import java.util.concurrent.TimeUnit;
 import org.aspectj.lang.Signature;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 /**
@@ -37,8 +38,13 @@ import org.springframework.stereotype.Component;
  * the services themselves log only on failure. Spring Boot registers
  * {@code ObservationHandler} beans with the {@code ObservationRegistry}
  * automatically.
+ *
+ * <p>
+ * Active only in the {@code http} profile, where {@code @Observed} observations
+ * are enabled and logs are exported; STDIO mode has no log appenders.
  */
 @Component
+@Profile("http")
 class ToolCallLoggingHandler implements ObservationHandler<ObservedAspectContext> {
 
 	private static final Logger logger = LoggerFactory.getLogger(ToolCallLoggingHandler.class);
