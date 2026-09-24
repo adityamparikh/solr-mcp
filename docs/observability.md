@@ -88,7 +88,7 @@ tool call's **Logs for this span** link always finds at least that line:
 
 ```text
 INFO  ... o.a.s.m.s.o.ToolCallLoggingHandler : SearchService#search completed in 43 ms
-WARN  ... o.a.s.m.s.o.ToolCallLoggingHandler : SearchService#search failed after 9 ms: java.lang.IllegalArgumentException: ...
+WARN  ... o.a.s.m.s.o.ToolCallLoggingHandler : SearchService#search failed after 9 ms: java.lang.IllegalArgumentException
 ```
 
 Any warning the tool logs itself, such as `check-health` on a missing collection, appears
