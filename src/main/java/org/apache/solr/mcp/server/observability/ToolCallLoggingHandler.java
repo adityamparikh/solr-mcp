@@ -20,9 +20,10 @@ import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationHandler;
 import io.micrometer.observation.aop.ObservedAspect.ObservedAspectContext;
 import java.util.concurrent.TimeUnit;
-import org.aspectj.lang.Signature;
+import org.aspectj.lang.reflect.MethodSignature;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springaicommunity.mcp.annotation.McpTool;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
@@ -32,10 +33,15 @@ import org.springframework.stereotype.Component;
  *
  * <p>
  * The tool services are {@code @Observed}, so every tool call already runs
- * inside an observation; this handler only reacts to those, and ignores HTTP,
- * security and other observations. The line is written inside the request's
- * trace, so a tool call's trace always has a log line attached in Loki, where
- * the services themselves log only on failure. Spring Boot registers
+ * inside an observation. {@code @Observed} sits on the service classes, which
+ * also hold resource, prompt and completion handlers; this handler reacts only
+ * to {@code @McpTool} methods, and ignores those, HTTP, security and other
+ * observations. The line names the call by the observation's contextual name
+ * ({@code SearchService#search}) and is written inside the request's trace, so
+ * a tool call's trace always has a log line attached in Loki, where the
+ * services themselves log only on failure. A failure logs the exception type
+ * only: the message can carry Solr's HTML error page, and already goes back to
+ * the client as the tool result. Spring Boot registers
  * {@code ObservationHandler} beans with the {@code ObservationRegistry}
  * automatically.
  *
@@ -58,20 +64,19 @@ class ToolCallLoggingHandler implements ObservationHandler<ObservedAspectContext
 
 	@Override
 	public void onStop(ObservedAspectContext context) {
-		Long startNanos = context.get(START_NANOS);
-		long millis = startNanos == null ? 0 : TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos);
-		Signature signature = context.getProceedingJoinPoint().getSignature();
-		String tool = signature.getDeclaringType().getSimpleName() + "#" + signature.getName();
+		long millis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - context.<Long>getRequired(START_NANOS));
 		Throwable error = context.getError();
 		if (error == null) {
-			logger.info("{} completed in {} ms", tool, millis);
+			logger.info("{} completed in {} ms", context.getContextualName(), millis);
 		} else {
-			logger.warn("{} failed after {} ms: {}", tool, millis, error.toString());
+			logger.warn("{} failed after {} ms: {}", context.getContextualName(), millis, error.getClass().getName());
 		}
 	}
 
 	@Override
 	public boolean supportsContext(Observation.Context context) {
-		return context instanceof ObservedAspectContext;
+		return context instanceof ObservedAspectContext observed
+				&& observed.getProceedingJoinPoint().getSignature() instanceof MethodSignature signature
+				&& signature.getMethod().isAnnotationPresent(McpTool.class);
 	}
 }

@@ -107,7 +107,7 @@ Every tool call also logs one line when it finishes, written under the request's
 
 ```text
 INFO  ... o.a.s.m.s.o.ToolCallLoggingHandler : CollectionService#listCollections completed in 12 ms
-WARN  ... o.a.s.m.s.o.ToolCallLoggingHandler : SearchService#search failed after 9 ms: java.lang.IllegalArgumentException: ...
+WARN  ... o.a.s.m.s.o.ToolCallLoggingHandler : SearchService#search failed after 9 ms: java.lang.IllegalArgumentException
 ```
 
 Traces take up to a minute to become searchable in Tempo, and metrics are exported once
