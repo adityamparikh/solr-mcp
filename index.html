@@ -2117,6 +2117,91 @@ cd solr-mcp
     </div>
   </details>
 
+  <details class="panel" id="observability">
+    <summary>Observability — traces and logs in Grafana <span class="hint">HTTP mode, one extra container</span></summary>
+    <div class="panel-body">
+      <p>
+        In HTTP mode the server exports <b>traces</b> and <b>logs</b> over OpenTelemetry. Point it
+        at Grafana's all-in-one LGTM container and every tool call shows up as a trace, with a span
+        per tool. About five minutes. Assumes Solr from step 1 is running. Apart from the server
+        command, commands are bash (macOS, Linux, WSL or Git Bash). STDIO mode exports
+        nothing, so pick <b>HTTP</b> under <em>Transport</em> in <a href="#s0">step 0</a> first.
+      </p>
+
+      <h3>1. Start LGTM</h3>
+      <p style="font-size:.86rem;color:var(--ink-2)">Grafana on 3000, the OTLP receiver on 4317 (gRPC) and 4318 (HTTP). The loop waits for the collector; Grafana answers first, and export only works once the collector is up.</p>
+      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>docker run -d --name lgtm -p 3000:3000 -p 4317:4317 -p 4318:4318 grafana/otel-lgtm
+
+until docker logs lgtm 2&gt;&amp;1 | grep -q "up and running"; do sleep 2; done
+echo "LGTM ready"</code></pre></div>
+
+      <h3>2. Restart the server pointed at it</h3>
+      <p style="font-size:.86rem;color:var(--ink-2)" data-runtime="docker">
+        Stop the step 2 server first — this one listens on 8080 too. The server sends to
+        <code class="inline">localhost:4317</code> by default, which inside a container is the
+        container itself, so <code class="inline">OTEL_TRACES_URL</code> sends it to your laptop
+        instead. Despite the name it covers logs as well as traces.
+      </p>
+      <p style="font-size:.86rem;color:var(--ink-2)" data-runtime="jar">
+        Stop the step 2 server first — this one listens on 8080 too. From a plain JAR the default
+        <code class="inline">localhost:4317</code> is already right, so the command is the same as
+        step 2: nothing to add.
+      </p>
+      <div class="codeblock" data-runtime="docker"><button class="copy" type="button">Copy</button><pre><code>docker run -p 8080:8080 --rm \
+  --add-host=host.docker.internal:host-gateway \
+  -e PROFILES=http \
+  -e HTTP_SECURITY_ENABLED=false \
+  -e SOLR_URL=http://host.docker.internal:8983/solr/ \
+  -e OTEL_TRACES_URL=http://host.docker.internal:4317 \
+  ghcr.io/adityamparikh/solr-mcp:coc2026</code></pre></div>
+      <div class="codeblock" data-runtime="jar" data-os="macos linux wsl"><button class="copy" type="button">Copy</button><pre><code>PROFILES=http HTTP_SECURITY_ENABLED=false SOLR_URL=http://localhost:8983/solr/ \
+  java -jar /absolute/path/to/solr-mcp-1.0.0-SNAPSHOT.jar</code></pre></div>
+      <div class="codeblock" data-runtime="jar" data-os="windows"><button class="copy" type="button">Copy</button><pre><code><span class="tok-c"># PowerShell</span>
+$env:PROFILES="http"; $env:HTTP_SECURITY_ENABLED="false"; $env:SOLR_URL="http://localhost:8983/solr/"
+java -jar C:/path/to/solr-mcp-1.0.0-SNAPSHOT.jar</code></pre></div>
+
+      <h3>3. Make some traffic</h3>
+      <p style="font-size:.86rem;color:var(--ink-2)">Any prompt from steps 3–7 in your client works. Or, without a client, a few tool calls with curl — each one is a trace:</p>
+      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>for q in "*:*" "title:dragon" "genres:drama"; do
+  curl -s -X POST http://localhost:8080/mcp -H "Content-Type: application/json" \
+    -H "Accept: application/json, text/event-stream" \
+    -d "{\"jsonrpc\":\"2.0\",\"method\":\"tools/call\",\"id\":1,\"params\":{\"name\":\"search\",\"arguments\":{\"collection\":\"shows-auto\",\"query\":\"$q\"}}}" &gt;/dev/null
+done</code></pre></div>
+
+      <h3>4. Look at it</h3>
+      <p style="font-size:.86rem;color:var(--ink-2)">
+        Open <a href="http://localhost:3000">localhost:3000</a> (no login) → <b>Explore</b>.
+        Pick <b>Tempo</b>, switch the query type to <b>TraceQL</b>, and run:
+      </p>
+      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>{resource.service.name="solr-mcp"}</code></pre></div>
+      <p style="font-size:.86rem;color:var(--ink-2)">
+        Open an <code class="inline">http post /mcp</code> trace. Inside it sit the security filter
+        chain and one span named for the tool — <code class="inline">search-service#search</code>,
+        <code class="inline">indexing-service#…</code> — with its duration. Traces take up to a minute to
+        become searchable — an empty result right after the calls is normal, so give it thirty
+        seconds and run the query again. For the application's logs, pick <b>Loki</b> and run
+        <code class="inline">{service_name="solr-mcp"}</code>.
+      </p>
+
+      <div class="note warn">
+        <span class="tag">What you won't see</span>
+        <p>
+          <b>Metrics are not exported to Grafana</b> — they're served for scraping instead, so the
+          Prometheus data source there only has the collector's own numbers. Read them straight
+          from the server:
+          <code class="inline">curl -s localhost:8080/actuator/prometheus | grep http_server_requests_seconds_count</code>.
+          The Solr request itself has no child span, and request handling logs nothing, so a
+          trace's <em>Logs for this span</em> link comes up empty; the logs in Loki are startup
+          and lifecycle lines.
+        </p>
+      </div>
+
+      <h3>Tear down</h3>
+      <p style="font-size:.86rem;color:var(--ink-2)">LGTM keeps everything in memory, so removing the container discards all of it.</p>
+      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>docker rm -f lgtm</code></pre></div>
+    </div>
+  </details>
+
   <details class="panel" id="secured">
     <summary>Security setup — HTTP mode with OAuth2 on <span class="hint">Keycloak on your laptop, start to finish</span></summary>
     <div class="panel-body">
@@ -2195,10 +2280,13 @@ curl -sf "$KC/realms/solr-mcp/.well-known/openid-configuration" >/dev/null && ec
         <code class="inline">localhost:8180</code> is not your laptop, and the issuer name has
         to be identical in the container and in the tokens, which takes more setup than a card.
       </p>
-      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>PROFILES=http HTTP_SECURITY_ENABLED=true \
+      <div class="codeblock" data-os="macos linux wsl"><button class="copy" type="button">Copy</button><pre><code>PROFILES=http HTTP_SECURITY_ENABLED=true \
 OAUTH2_ISSUER_URI=http://localhost:8180/realms/solr-mcp \
 SOLR_URL=http://localhost:8983/solr/ \
 java -jar /absolute/path/to/solr-mcp-1.0.0-SNAPSHOT.jar</code></pre></div>
+      <div class="codeblock" data-os="windows"><button class="copy" type="button">Copy</button><pre><code><span class="tok-c"># PowerShell</span>
+$env:PROFILES="http"; $env:HTTP_SECURITY_ENABLED="true"; $env:OAUTH2_ISSUER_URI="http://localhost:8180/realms/solr-mcp"; $env:SOLR_URL="http://localhost:8983/solr/"
+java -jar C:/path/to/solr-mcp-1.0.0-SNAPSHOT.jar</code></pre></div>
       <p style="font-size:.86rem;color:var(--ink-2)">Leave that terminal open. In another one, wait for
         <code class="inline">curl http://localhost:8080/actuator/health</code> to answer
         <code class="inline">{"status":"UP"}</code>, then read back the audience the server expects.
@@ -2241,21 +2329,72 @@ curl -s -X POST http://localhost:8080/mcp -H "Content-Type: application/json" \
         <code class="inline">$TOKEN</code> from step 4 explicitly.
       </p>
 
-      <!-- ── Claude Code ── -->
-      <div data-client="claude-code">
-        <h4>Claude Code</h4>
-        <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>claude mcp add --transport http solr-mcp http://localhost:8080/mcp \
+      <div data-transport="stdio" class="note warn">
+        <span class="tag">HTTP transport only</span>
+        <p>
+          OAuth2 bearer token security applies only to the <b>HTTP</b> transport. In <b>STDIO</b> mode, your client launches the server directly as a local subprocess over standard input/output without network exposure or bearer authentication headers. Switch <b>Transport</b> to <b>HTTP</b> in <a href="#s0">step 0</a> to see client connection snippets with the token in a header.
+        </p>
+      </div>
+
+      <div data-transport="http">
+        <p style="font-size:.86rem;color:var(--ink-2)" data-runtime="docker">
+          Make sure your Solr MCP Docker container is running and port 8080 is published (<code class="inline">-p 8080:8080</code>) so your client can reach <code class="inline">http://localhost:8080/mcp</code>.
+        </p>
+        <p style="font-size:.86rem;color:var(--ink-2)" data-runtime="jar">
+          Make sure your Solr MCP JAR process from step 3 is running and listening on port 8080 before connecting your client.
+        </p>
+        <p style="font-size:.86rem;color:var(--ink-2)" data-format="json">
+          Dataset: <code class="inline">shows-auto</code> was indexed from JSON in step 3. The verification query checks that collection.
+        </p>
+        <p style="font-size:.86rem;color:var(--ink-2)" data-format="csv">
+          Dataset: <code class="inline">shows-auto</code> was indexed from CSV in step 3. The verification query checks that collection.
+        </p>
+        <p style="font-size:.86rem;color:var(--ink-2)" data-format="xml">
+          Dataset: <code class="inline">shows-auto</code> was indexed from XML in step 3 (fields carry the <code class="inline">show_</code> prefix). The verification query checks that collection.
+        </p>
+        <p style="font-size:.86rem;color:var(--ink-2)" data-format="markdown">
+          Dataset: <code class="inline">shows-auto</code> was indexed from Markdown in step 3. The verification query checks that collection.
+        </p>
+
+        <!-- ── Claude Code ── -->
+        <div data-client="claude-code">
+          <h4>Claude Code</h4>
+          <div class="codeblock" data-os="macos linux wsl"><button class="copy" type="button">Copy</button><pre><code>claude mcp add --transport http solr-mcp http://localhost:8080/mcp \
   --header "Authorization: Bearer $TOKEN"
 claude mcp list      # ✔ Connected — true with or without the header, so also run:
 claude -p "Call the list-collections tool on the solr-mcp MCP server and reply with its raw result"
 # ["shows-auto", ...]   ← the proof. "Access Denied" here means the header did not reach the server.</code></pre></div>
-      </div>
+          <div class="codeblock" data-os="windows"><button class="copy" type="button">Copy</button><pre><code><span class="tok-c"># PowerShell</span>
+claude mcp add --transport http solr-mcp http://localhost:8080/mcp `
+  --header "Authorization: Bearer $TOKEN"
+claude mcp list      <span class="tok-c"># ✔ Connected — true with or without the header, so also run:</span>
+claude -p "Call the list-collections tool on the solr-mcp MCP server and reply with its raw result"
+<span class="tok-c"># ["shows-auto", ...]   ← the proof. "Access Denied" here means the header did not reach the server.</span></code></pre></div>
+        </div>
 
-      <!-- ── Claude Desktop ── -->
-      <div data-client="claude-desktop">
-        <h4>Claude Desktop (via mcp-remote)</h4>
-        <p style="font-size:.86rem;color:var(--ink-2)">Paste the token into <code class="inline">env</code>; <code class="inline">mcp-remote</code> forwards it on every request. Edit your <code class="inline">claude_desktop_config.json</code>, then fully quit and reopen Claude Desktop:</p>
-        <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>{
+        <!-- ── Claude Desktop ── -->
+        <div data-client="claude-desktop">
+          <h4>Claude Desktop (via mcp-remote)</h4>
+          <p style="font-size:.86rem;color:var(--ink-2)">Paste the token into <code class="inline">env</code>; <code class="inline">mcp-remote</code> forwards it on every request. Edit your config file, then <b>fully quit and reopen</b> Claude Desktop:</p>
+          <div class="codeblock" data-os="macos"><button class="copy" type="button">Copy</button><pre><code>~/Library/Application Support/Claude/claude_desktop_config.json</code></pre></div>
+          <div class="codeblock" data-os="windows wsl"><button class="copy" type="button">Copy</button><pre><code>%APPDATA%\Claude\claude_desktop_config.json</code></pre></div>
+          <div class="codeblock" data-os="linux"><button class="copy" type="button">Copy</button><pre><code>~/.config/Claude/claude_desktop_config.json</code></pre></div>
+          <div class="note warn" data-os="wsl">
+            <span class="tag">On WSL</span>
+            <p>
+              Claude Desktop runs on the Windows host, not inside WSL — so use the Windows path above
+              and let Docker Desktop's WSL integration handle the container.
+            </p>
+          </div>
+          <div class="note warn" data-os="linux">
+            <span class="tag">On Linux</span>
+            <p>
+              There is no official Claude Desktop build for Linux. That path is where community
+              builds look; if you're on Linux, <b>Claude Code</b> or <b>MCP Inspector</b> is the
+              smoother route.
+            </p>
+          </div>
+          <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>{
   "mcpServers": {
     "solr-mcp": {
       "command": "npx",
@@ -2265,13 +2404,13 @@ claude -p "Call the list-collections tool on the solr-mcp MCP server and reply w
     }
   }
 }</code></pre></div>
-      </div>
+        </div>
 
-      <!-- ── VS Code / Copilot ── -->
-      <div data-client="copilot">
-        <h4>VS Code / GitHub Copilot</h4>
-        <p style="font-size:.86rem;color:var(--ink-2)">In <code class="inline">.vscode/mcp.json</code>, add the <code class="inline">headers</code> object to the server entry from step 2. Using an <code class="inline">inputs</code> prompt keeps the token out of source control:</p>
-        <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>{
+        <!-- ── VS Code / Copilot ── -->
+        <div data-client="copilot">
+          <h4>VS Code / GitHub Copilot</h4>
+          <p style="font-size:.86rem;color:var(--ink-2)">In <code class="inline">.vscode/mcp.json</code>, add the <code class="inline">headers</code> object to the server entry from step 2. Using an <code class="inline">inputs</code> prompt keeps the token out of source control:</p>
+          <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>{
   "inputs": [
     { "type": "promptString", "id": "solr-token", "description": "Solr MCP token", "password": true }
   ],
@@ -2283,13 +2422,13 @@ claude -p "Call the list-collections tool on the solr-mcp MCP server and reply w
     }
   }
 }</code></pre></div>
-      </div>
+        </div>
 
-      <!-- ── Cursor ── -->
-      <div data-client="cursor">
-        <h4>Cursor</h4>
-        <p style="font-size:.86rem;color:var(--ink-2)">In <code class="inline">.cursor/mcp.json</code>, add the <code class="inline">headers</code> object to your server entry. Cursor expands <code class="inline">${env:SOLR_MCP_TOKEN}</code> from your environment:</p>
-        <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>{
+        <!-- ── Cursor ── -->
+        <div data-client="cursor">
+          <h4>Cursor</h4>
+          <p style="font-size:.86rem;color:var(--ink-2)">In <code class="inline">.cursor/mcp.json</code>, add the <code class="inline">headers</code> object to your server entry. Cursor expands <code class="inline">${env:SOLR_MCP_TOKEN}</code> from your environment:</p>
+          <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>{
   "mcpServers": {
     "solr-mcp": {
       "url": "http://localhost:8080/mcp",
@@ -2297,13 +2436,13 @@ claude -p "Call the list-collections tool on the solr-mcp MCP server and reply w
     }
   }
 }</code></pre></div>
-      </div>
+        </div>
 
-      <!-- ── Zed ── -->
-      <div data-client="zed">
-        <h4>Zed</h4>
-        <p style="font-size:.86rem;color:var(--ink-2)">In <code class="inline">zed: open settings</code> (JSON), add the <code class="inline">headers</code> object to your remote server entry:</p>
-        <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>{
+        <!-- ── Zed ── -->
+        <div data-client="zed">
+          <h4>Zed</h4>
+          <p style="font-size:.86rem;color:var(--ink-2)">In <code class="inline">zed: open settings</code> (JSON), add the <code class="inline">headers</code> object to your remote server entry:</p>
+          <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>{
   "context_servers": {
     "solr-mcp": {
       "url": "http://localhost:8080/mcp",
@@ -2311,13 +2450,13 @@ claude -p "Call the list-collections tool on the solr-mcp MCP server and reply w
     }
   }
 }</code></pre></div>
-      </div>
+        </div>
 
-      <!-- ── IntelliJ ── -->
-      <div data-client="intellij">
-        <h4>IntelliJ IDEA / JetBrains (via mcp-remote)</h4>
-        <p style="font-size:.86rem;color:var(--ink-2)">In <code class="inline">.junie/mcp/mcp.json</code> or IDE Settings, proxy through <code class="inline">mcp-remote</code> to forward the bearer header on each request:</p>
-        <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>{
+        <!-- ── IntelliJ ── -->
+        <div data-client="intellij">
+          <h4>IntelliJ IDEA / JetBrains (via mcp-remote)</h4>
+          <p style="font-size:.86rem;color:var(--ink-2)">In <code class="inline">.junie/mcp/mcp.json</code> or IDE Settings, proxy through <code class="inline">mcp-remote</code> to forward the bearer header on each request:</p>
+          <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>{
   "mcpServers": {
     "solr-mcp": {
       "command": "npx",
@@ -2327,17 +2466,24 @@ claude -p "Call the list-collections tool on the solr-mcp MCP server and reply w
     }
   }
 }</code></pre></div>
-      </div>
+        </div>
 
-      <!-- ── Inspector ── -->
-      <div data-client="inspector">
-        <h4>MCP Inspector</h4>
-        <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code># web UI
+        <!-- ── Inspector ── -->
+        <div data-client="inspector">
+          <h4>MCP Inspector</h4>
+          <div class="codeblock" data-os="macos linux wsl"><button class="copy" type="button">Copy</button><pre><code># web UI
 npx @modelcontextprotocol/inspector --server-url http://localhost:8080/mcp --transport http \
   --header "Authorization: Bearer $TOKEN"
 # or one call from the CLI, no browser
 npx @modelcontextprotocol/inspector --cli http://localhost:8080/mcp --transport http \
   --header "Authorization: Bearer $TOKEN" --method tools/call --tool-name list-collections</code></pre></div>
+          <div class="codeblock" data-os="windows"><button class="copy" type="button">Copy</button><pre><code><span class="tok-c"># PowerShell web UI</span>
+npx @modelcontextprotocol/inspector --server-url http://localhost:8080/mcp --transport http `
+  --header "Authorization: Bearer $TOKEN"
+<span class="tok-c"># or one call from the CLI, no browser</span>
+npx @modelcontextprotocol/inspector --cli http://localhost:8080/mcp --transport http `
+  --header "Authorization: Bearer $TOKEN" --method tools/call --tool-name list-collections</code></pre></div>
+        </div>
       </div>
 
       <h3>When it breaks</h3>
@@ -2414,10 +2560,13 @@ claude mcp remove solr-mcp</code></pre></div>
   -e SOLR_URL=http://host.docker.internal:8983/solr/ \
   ghcr.io/adityamparikh/solr-mcp:coc2026</code></pre></div>
 
-      <div class="codeblock" data-runtime="jar"><button class="copy" type="button">Copy</button><pre><code>PROFILES=http HTTP_SECURITY_ENABLED=true \
+      <div class="codeblock" data-runtime="jar" data-os="macos linux wsl"><button class="copy" type="button">Copy</button><pre><code>PROFILES=http HTTP_SECURITY_ENABLED=true \
 OAUTH2_ISSUER_URI=https://YOUR-TENANT.us.auth0.com/ \
 SOLR_URL=http://localhost:8983/solr/ \
 java -jar /absolute/path/to/solr-mcp-1.0.0-SNAPSHOT.jar</code></pre></div>
+      <div class="codeblock" data-runtime="jar" data-os="windows"><button class="copy" type="button">Copy</button><pre><code><span class="tok-c"># PowerShell</span>
+$env:PROFILES="http"; $env:HTTP_SECURITY_ENABLED="true"; $env:OAUTH2_ISSUER_URI="https://YOUR-TENANT.us.auth0.com/"; $env:SOLR_URL="http://localhost:8983/solr/"
+java -jar C:/path/to/solr-mcp-1.0.0-SNAPSHOT.jar</code></pre></div>
 
       <ol start="4" style="max-width:var(--measure);color:var(--ink-2);padding-left:1.1rem;font-size:.86rem">
         <li>
