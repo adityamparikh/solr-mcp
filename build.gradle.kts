@@ -93,7 +93,7 @@ java {
 
 // CycloneDX SBOM
 // ==============
-// What we no longer configure: *output*. Spring Boot 4.1.1's `CyclonedxPluginAction`
+// What we no longer configure: *output*. Spring Boot 4's `CyclonedxPluginAction`
 // auto-configures the `cyclonedxBom` task (type `org.cyclonedx.gradle.CyclonedxAggregateTask`)
 // for cyclonedx 3.x -- it sets the output to `build/reports/cyclonedx/application.cdx.json`
 // and makes the bootJar embed it at `META-INF/sbom/application.cdx.json`. The
@@ -220,7 +220,7 @@ dependencyManagement {
     imports {
         // Declared before spring-ai-bom: the dependency-management plugin uses
         // Maven "first declaration wins" semantics. spring-ai-bom does not manage
-        // the MCP SDK at all -- Spring AI 2.0.1 depends on mcp 2.0.0 directly --
+        // the MCP SDK at all -- Spring AI 2.1.0-M1 depends on mcp 2.0.0 directly --
         // so this BOM is what lifts the whole SDK to 2.0.1 as one coherent set
         // rather than pinning mcp-core and leaving mcp-json-jackson3 behind.
         mavenBom("io.modelcontextprotocol.sdk:mcp-bom:${libs.versions.mcp.sdk.get()}")
@@ -238,14 +238,14 @@ configurations.all {
             because("Version 1.8.0-alpha has protobuf 4.x incompatibility causing NoSuchMethodError")
         }
         // Align the OpenTelemetry incubator API with the stable API version managed by
-        // the Spring Boot 4.1.0 BOM (opentelemetry-api:1.62.0). The logback-appender
+        // the Spring Boot 4.2.0-M2 BOM (opentelemetry-api:1.65.0). The logback-appender
         // (opentelemetry-instrumentation 2.21.0-alpha) transitively pins
         // opentelemetry-api-incubator to 1.55.0-alpha, which lacks
         // DeclarativeConfigProperties.get(String) used by SB4's OpenTelemetrySdk
         // autoconfiguration — causing a NoSuchMethodError at context startup.
         if (requested.group == "io.opentelemetry" && requested.name == "opentelemetry-api-incubator") {
-            useVersion("1.62.0-alpha")
-            because("Must match Spring Boot 4.1.0-managed opentelemetry-api:1.62.0")
+            useVersion("1.65.0-alpha")
+            because("Must match Spring Boot 4.2.0-M2-managed opentelemetry-api:1.65.0")
         }
     }
 }
@@ -421,6 +421,23 @@ spotless {
     kotlinGradle {
         target("*.gradle.kts")
         ktlint()
+    }
+}
+
+// io.spring.dependency-management applies the Spring Boot BOM to every configuration,
+// including the ones Spotless creates to resolve its formatters. Spring Boot 4.2 manages
+// Kotlin 2.4.20, which drops classes ktlint's embedded compiler needs
+// (NoClassDefFoundError: org/jetbrains/kotlin/konan/file/ZipUtilKt), so give ktlint back
+// the Kotlin version it asks for. The rule is added in beforeResolve, after the BOM's own
+// rule, so it runs last.
+configurations.matching { it.name.startsWith("spotless") }.configureEach {
+    incoming.beforeResolve {
+        resolutionStrategy.eachDependency {
+            if (requested.group == "org.jetbrains.kotlin" && requested.version != null) {
+                useVersion(requested.version!!)
+                because("ktlint runs on the Kotlin compiler it was built against, not Spring Boot's")
+            }
+        }
     }
 }
 
