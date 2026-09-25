@@ -20,16 +20,21 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.UnknownHostException;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.mcp.server.indexing.documentcreator.DocumentProcessingException;
@@ -37,22 +42,23 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledInNativeImage;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
- * Error mapping and format resolution of the {@code index-url} tool with the
- * fetcher and the indexing path mocked; the real fetch is covered by
- * {@link UrlFetcherTest} and the integration test. The URL constant ends in
- * {@code .json}, so cases that rely on the media type use their own URLs.
+ * Error mapping, format resolution and the commit-only-when-complete rule of
+ * the {@code index-url} tool, with the fetcher and the indexing path mocked;
+ * the real fetch is covered by {@link UrlFetcherTest} and the integration test.
+ * The URL constant ends in {@code .json}, so cases that rely on the media type
+ * use their own URLs. A mocked {@code sendUncommitted} reads the body the way
+ * SolrJ does: to its end, swallowing a read failure.
  */
 @ExtendWith(MockitoExtension.class)
 @DisabledInNativeImage
 class UrlIndexingServiceTest {
 
 	private static final String URL = "https://raw.githubusercontent.com/apache/solr-mcp/main/shows.json";
-	private static final String SUMMARY = "Successfully indexed 2 of 2 documents into collection 'shows'";
+	private static final String SUMMARY = "Solr accepted the document for collection 'shows' and committed it";
 
 	@Mock
 	IndexingService indexingService;
@@ -76,7 +82,7 @@ class UrlIndexingServiceTest {
 			release.await(10, TimeUnit.SECONDS);
 			return fetched(URL, "application/json", "[]");
 		});
-		when(indexingService.indexPayload("shows", "[]", "json")).thenReturn(SUMMARY);
+		streamsAndCommits("json");
 		var single = new UrlIndexingService(indexingService, fetcher, 1);
 		var executor = Executors.newSingleThreadExecutor();
 		try {
@@ -96,21 +102,25 @@ class UrlIndexingServiceTest {
 	}
 
 	@Test
-	void decodesTheBodyWithItsCharsetAndReturnsTheIndexingSummary() throws Exception {
-		when(fetcher.fetch(URI.create(URL))).thenReturn(fetched(URL, "text/plain", StandardCharsets.ISO_8859_1,
-				"[{\"id\":\"café\"}]".getBytes(StandardCharsets.ISO_8859_1)));
-		when(indexingService.indexPayload(eq("shows"), anyString(), eq("json"))).thenReturn(SUMMARY);
+	void streamsTheBodyWithItsCharsetThenCommits() throws Exception {
+		byte[] latin1 = "[{\"id\":\"café\"}]".getBytes(StandardCharsets.ISO_8859_1);
+		when(fetcher.fetch(URI.create(URL)))
+				.thenAnswer(i -> fetched(URL, "text/plain", StandardCharsets.ISO_8859_1, latin1));
+		var sent = new AtomicReference<byte[]>();
+		doAnswer(inv -> {
+			sent.set(inv.getArgument(2, InputStream.class).readAllBytes());
+			return null;
+		}).when(indexingService).sendUncommitted(eq("shows"), eq("json"), any(), eq(StandardCharsets.ISO_8859_1));
+		when(indexingService.commitStreamed("shows", "JSON document", latin1.length)).thenReturn(SUMMARY);
 
 		assertEquals(SUMMARY, service.indexUrl("shows", URL, null));
-		var payload = ArgumentCaptor.forClass(String.class);
-		verify(indexingService).indexPayload(eq("shows"), payload.capture(), eq("json"));
-		assertEquals("[{\"id\":\"café\"}]", payload.getValue());
+		assertArrayEquals(latin1, sent.get());
 	}
 
 	@Test
 	void explicitFormatOverridesExtensionAndMediaType() throws Exception {
-		when(fetcher.fetch(any())).thenReturn(fetched(URL, "application/json", "id\n1\n"));
-		when(indexingService.indexPayload("shows", "id\n1\n", "csv")).thenReturn(SUMMARY);
+		when(fetcher.fetch(any())).thenAnswer(i -> fetched(URL, "application/json", "id\n1\n"));
+		streamsAndCommits("csv");
 
 		assertEquals(SUMMARY, service.indexUrl("shows", URL, " CSV "));
 	}
@@ -118,8 +128,8 @@ class UrlIndexingServiceTest {
 	@Test
 	void extensionOverridesMediaTypeAndIgnoresTheQueryString() throws Exception {
 		String url = "https://example.invalid/export.csv?token=abc";
-		when(fetcher.fetch(any())).thenReturn(fetched(url, "text/plain", "id\n1\n"));
-		when(indexingService.indexPayload("shows", "id\n1\n", "csv")).thenReturn(SUMMARY);
+		when(fetcher.fetch(any())).thenAnswer(i -> fetched(url, "text/plain", "id\n1\n"));
+		streamsAndCommits("csv");
 
 		assertEquals(SUMMARY, service.indexUrl("shows", url, null));
 	}
@@ -127,8 +137,8 @@ class UrlIndexingServiceTest {
 	@Test
 	void mediaTypeResolvesTheFormatWhenNeitherUrlHasAnExtension() throws Exception {
 		String url = "https://example.invalid/data";
-		when(fetcher.fetch(any())).thenReturn(fetched(url, "text/xml", "<add/>"));
-		when(indexingService.indexPayload("shows", "<add/>", "xml")).thenReturn(SUMMARY);
+		when(fetcher.fetch(any())).thenAnswer(i -> fetched(url, "text/xml", "<add/>"));
+		streamsAndCommits("xml");
 
 		assertEquals(SUMMARY, service.indexUrl("shows", url, null));
 	}
@@ -136,20 +146,31 @@ class UrlIndexingServiceTest {
 	@Test
 	void csvAndMarkdownMediaTypesResolveTheirFormats() throws Exception {
 		when(fetcher.fetch(URI.create("https://example.invalid/a")))
-				.thenReturn(fetched("https://example.invalid/a", "text/csv", "id\n1\n"));
+				.thenAnswer(i -> fetched("https://example.invalid/a", "text/csv", "id\n1\n"));
 		when(fetcher.fetch(URI.create("https://example.invalid/b")))
-				.thenReturn(fetched("https://example.invalid/b", "text/markdown", "# T\n"));
-		when(indexingService.indexPayload("shows", "id\n1\n", "csv")).thenReturn(SUMMARY);
-		when(indexingService.indexPayload("shows", "# T\n", "markdown")).thenReturn(SUMMARY);
+				.thenAnswer(i -> fetched("https://example.invalid/b", "text/markdown", "# T\n"));
+		streamsAndCommits("csv");
+		when(indexingService.indexMarkdown("shows", "# T\n")).thenReturn(SUMMARY);
 
 		assertEquals(SUMMARY, service.indexUrl("shows", "https://example.invalid/a", null));
 		assertEquals(SUMMARY, service.indexUrl("shows", "https://example.invalid/b", null));
 	}
 
 	@Test
+	void markdownIsReadWholeAndDecodedWithItsCharset() throws Exception {
+		String url = "https://example.invalid/notes.md";
+		when(fetcher.fetch(any())).thenAnswer(i -> fetched(url, "text/plain", StandardCharsets.ISO_8859_1,
+				"# Café\n".getBytes(StandardCharsets.ISO_8859_1)));
+		when(indexingService.indexMarkdown("shows", "# Café\n")).thenReturn(SUMMARY);
+
+		assertEquals(SUMMARY, service.indexUrl("shows", url, null));
+		verify(indexingService, never()).sendUncommitted(any(), any(), any(), any());
+	}
+
+	@Test
 	void aBlankExplicitFormatIsTreatedAsAbsent() throws Exception {
-		when(fetcher.fetch(any())).thenReturn(fetched(URL, "text/plain", "[]"));
-		when(indexingService.indexPayload("shows", "[]", "json")).thenReturn(SUMMARY);
+		when(fetcher.fetch(any())).thenAnswer(i -> fetched(URL, "text/plain", "[]"));
+		streamsAndCommits("json");
 
 		assertEquals(SUMMARY, service.indexUrl("shows", URL, "   "));
 	}
@@ -157,9 +178,9 @@ class UrlIndexingServiceTest {
 	@Test
 	void theFinalUrlsExtensionIsUsedWhenTheRequestedUrlHasNone() throws Exception {
 		String requested = "https://example.invalid/latest";
-		var body = fetched("https://example.invalid/releases/shows.json", "text/plain", "[]");
-		when(fetcher.fetch(URI.create(requested))).thenReturn(body);
-		when(indexingService.indexPayload("shows", "[]", "json")).thenReturn(SUMMARY);
+		when(fetcher.fetch(URI.create(requested)))
+				.thenAnswer(i -> fetched("https://example.invalid/releases/shows.json", "text/plain", "[]"));
+		streamsAndCommits("json");
 
 		assertEquals(SUMMARY, service.indexUrl("shows", requested, null));
 	}
@@ -167,7 +188,7 @@ class UrlIndexingServiceTest {
 	@Test
 	void textPlainWithoutAKnownExtensionIsAFormatErrorAndIndexesNothing() throws Exception {
 		String url = "https://example.invalid/data.txt";
-		when(fetcher.fetch(any())).thenReturn(fetched(url, "text/plain", "id\n1\n"));
+		when(fetcher.fetch(any())).thenAnswer(i -> fetched(url, "text/plain", "id\n1\n"));
 
 		var e = assertThrows(IllegalArgumentException.class, () -> service.indexUrl("shows", url, null));
 		assertEquals(UrlIndexingService.FORMAT_UNRESOLVED, e.getMessage());
@@ -177,7 +198,7 @@ class UrlIndexingServiceTest {
 	@Test
 	void htmlIsAFormatErrorThatSaysSo() throws Exception {
 		String url = "https://example.invalid/page";
-		when(fetcher.fetch(any())).thenReturn(fetched(url, "text/html", "<html/>"));
+		when(fetcher.fetch(any())).thenAnswer(i -> fetched(url, "text/html", "<html/>"));
 
 		var e = assertThrows(IllegalArgumentException.class, () -> service.indexUrl("shows", url, null));
 		assertEquals(UrlIndexingService.FORMAT_UNRESOLVED + UrlIndexingService.HTML_NOT_SUPPORTED, e.getMessage());
@@ -230,23 +251,86 @@ class UrlIndexingServiceTest {
 		assertEquals(UrlIndexingService.UNREACHABLE, e.getMessage());
 	}
 
+	/**
+	 * SolrJ swallows a failed read and ends the upload early; Solr may accept what
+	 * it got. The tool must still see the failure, and must not commit.
+	 */
 	@Test
-	void parseFailuresNameTheFormatAndSayNothingWasIndexed() throws Exception {
-		when(fetcher.fetch(any())).thenReturn(fetched(URL, "application/json", "not json"));
-		when(indexingService.indexPayload("shows", "not json", "json"))
-				.thenThrow(new DocumentProcessingException("bad"));
+	void aBodyThatFailsPartwayIsNotCommittedAndSaysSomeDocumentsMayAppear() throws Exception {
+		when(fetcher.fetch(any())).thenAnswer(i -> failing(URL, "id\n1\n2\n", new IOException("connection reset")));
+		streamsSwallowingFailure("json");
 
-		var e = assertThrows(IllegalArgumentException.class, () -> service.indexUrl("shows", URL, null));
-		assertEquals("Cannot parse the URL content as json. Check its syntax and format. Nothing was indexed.",
+		var e = assertThrows(IllegalStateException.class, () -> service.indexUrl("shows", URL, null));
+		assertEquals(UrlIndexingService.PARTIAL_TRANSFER.formatted(UrlIndexingService.STOPPED, 7), e.getMessage());
+		verify(indexingService, never()).commitStreamed(any(), any(), anyLong());
+	}
+
+	@Test
+	void aBodyThatTimesOutPartwaySaysSo() throws Exception {
+		when(fetcher.fetch(any()))
+				.thenAnswer(i -> failing(URL, "[{\"id\":1}", new SocketTimeoutException("total timeout")));
+		streamsSwallowingFailure("json");
+
+		var e = assertThrows(IllegalStateException.class, () -> service.indexUrl("shows", URL, null));
+		assertEquals(UrlIndexingService.PARTIAL_TRANSFER.formatted(UrlIndexingService.TIMED_OUT, 9), e.getMessage());
+		verify(indexingService, never()).commitStreamed(any(), any(), anyLong());
+	}
+
+	@Test
+	void aBodyThatFailsBeforeItsFirstByteIsUnreachableNotPartial() throws Exception {
+		when(fetcher.fetch(any())).thenAnswer(i -> failing(URL, "", new IOException("connection reset")));
+		streamsSwallowingFailure("json");
+
+		var e = assertThrows(IllegalStateException.class, () -> service.indexUrl("shows", URL, null));
+		assertEquals(UrlIndexingService.UNREACHABLE, e.getMessage());
+	}
+
+	/** Solr's 400 for a cut-off JSON body says nothing about why it was cut off. */
+	@Test
+	void aFailedTransferWinsOverSolrsVerdictOnWhatItReceived() throws Exception {
+		when(fetcher.fetch(any())).thenAnswer(i -> failing(URL, "[{\"id\":1}", new IOException("connection reset")));
+		doAnswer(inv -> {
+			try {
+				inv.getArgument(2, InputStream.class).transferTo(OutputStream.nullOutputStream());
+			} catch (IOException swallowed) {
+				// as SolrJ does
+			}
+			throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, "Unexpected EOF in JSON");
+		}).when(indexingService).sendUncommitted(any(), any(), any(), any());
+
+		var e = assertThrows(IllegalStateException.class, () -> service.indexUrl("shows", URL, null));
+		assertEquals(UrlIndexingService.PARTIAL_TRANSFER.formatted(UrlIndexingService.STOPPED, 9), e.getMessage());
+	}
+
+	@Test
+	void anXmlBodyThatIsNotAnAddBlockNamesTheFormatAndSaysNothingWasIndexed() throws Exception {
+		String url = "https://example.invalid/shows.xml";
+		when(fetcher.fetch(any())).thenAnswer(i -> fetched(url, "application/xml", "<shows/>"));
+		doThrow(new DocumentProcessingException("XML input must be a Solr <add> block")).when(indexingService)
+				.sendUncommitted(any(), eq("xml"), any(), any());
+
+		var e = assertThrows(IllegalArgumentException.class, () -> service.indexUrl("shows", url, null));
+		assertEquals("Cannot parse the URL content as xml. XML input must be a Solr <add> block. Nothing was indexed.",
+				e.getMessage());
+	}
+
+	@Test
+	void markdownParseFailuresSayNothingWasIndexed() throws Exception {
+		String url = "https://example.invalid/notes.md";
+		when(fetcher.fetch(any())).thenAnswer(i -> fetched(url, "text/markdown", "---\n: bad\n"));
+		when(indexingService.indexMarkdown(any(), any())).thenThrow(new DocumentProcessingException("bad"));
+
+		var e = assertThrows(IllegalArgumentException.class, () -> service.indexUrl("shows", url, null));
+		assertEquals("Cannot parse the URL content as markdown. Check its syntax and format. Nothing was indexed.",
 				e.getMessage());
 	}
 
 	@Test
 	void solrFailuresAreStateErrors() throws Exception {
-		when(fetcher.fetch(any())).thenReturn(fetched(URL, "application/json", "[]"));
-		when(indexingService.indexPayload("shows", "[]", "json")).thenThrow(new SolrServerException("down"))
-				.thenThrow(new IOException("connection reset"))
-				.thenThrow(new SolrException(SolrException.ErrorCode.SERVER_ERROR, "commit failed"));
+		when(fetcher.fetch(any())).thenAnswer(i -> fetched(URL, "application/json", "[]"));
+		doThrow(new SolrServerException("down")).doThrow(new IOException("connection reset"))
+				.doThrow(new SolrException(SolrException.ErrorCode.SERVER_ERROR, "update failed")).when(indexingService)
+				.sendUncommitted(any(), any(), any(), any());
 
 		for (int i = 0; i < 3; i++) {
 			var e = assertThrows(IllegalStateException.class, () -> service.indexUrl("shows", URL, null));
@@ -255,14 +339,48 @@ class UrlIndexingServiceTest {
 	}
 
 	@Test
+	void aFailedCommitIsAStateError() throws Exception {
+		when(fetcher.fetch(any())).thenAnswer(i -> fetched(URL, "application/json", "[]"));
+		streamsSwallowingFailure("json");
+		when(indexingService.commitStreamed(any(), any(), anyLong()))
+				.thenThrow(new SolrException(SolrException.ErrorCode.SERVER_ERROR, "commit failed"));
+
+		var e = assertThrows(IllegalStateException.class, () -> service.indexUrl("shows", URL, null));
+		assertEquals(UrlIndexingService.SOLR_FAILED, e.getMessage());
+	}
+
+	@Test
 	void aSolrBadRequestIsReportedAsRejectedContentWithSolrsReason() throws Exception {
-		when(fetcher.fetch(any())).thenReturn(fetched("https://example.invalid/x.csv", "text/csv", "id\n1\n"));
-		when(indexingService.indexPayload("shows", "id\n1\n", "csv"))
-				.thenThrow(new SolrException(SolrException.ErrorCode.BAD_REQUEST, "CSV parse error"));
+		when(fetcher.fetch(any())).thenAnswer(i -> fetched("https://example.invalid/x.csv", "text/csv", "id\n1\n"));
+		doThrow(new SolrException(SolrException.ErrorCode.BAD_REQUEST, "CSV parse error")).when(indexingService)
+				.sendUncommitted(any(), eq("csv"), any(), any());
 
 		var e = assertThrows(IllegalArgumentException.class,
 				() -> service.indexUrl("shows", "https://example.invalid/x.csv", null));
 		assertEquals(UrlIndexingService.SOLR_REJECTED.formatted("csv", "CSV parse error"), e.getMessage());
+	}
+
+	/**
+	 * A mocked Solr that reads the whole body, and a commit that returns SUMMARY.
+	 */
+	private void streamsAndCommits(String format) throws Exception {
+		streamsSwallowingFailure(format);
+		when(indexingService.commitStreamed(eq("shows"), eq(format.toUpperCase(Locale.ROOT) + " document"), anyLong()))
+				.thenReturn(SUMMARY);
+	}
+
+	/**
+	 * Reads the body as SolrJ's content writer does: to its end, logging a failure.
+	 */
+	private void streamsSwallowingFailure(String format) throws Exception {
+		doAnswer(inv -> {
+			try {
+				inv.getArgument(2, InputStream.class).transferTo(OutputStream.nullOutputStream());
+			} catch (IOException swallowed) {
+				// SolrJ logs "Cannot write Content Stream" and ends the upload
+			}
+			return null;
+		}).when(indexingService).sendUncommitted(eq("shows"), eq(format), any(), any());
 	}
 
 	private static UrlFetcher.FetchedBody fetched(String url, String mediaType, String body) {
@@ -270,6 +388,40 @@ class UrlIndexingServiceTest {
 	}
 
 	private static UrlFetcher.FetchedBody fetched(String url, String mediaType, Charset charset, byte[] body) {
-		return new UrlFetcher.FetchedBody(URI.create(url), mediaType, charset, body);
+		return new UrlFetcher.FetchedBody(URI.create(url), mediaType, charset,
+				stream(new ByteArrayInputStream(body), body.length));
+	}
+
+	/** A body that delivers {@code prefix}, then fails with {@code failure}. */
+	private static UrlFetcher.FetchedBody failing(String url, String prefix, IOException failure) {
+		byte[] bytes = prefix.getBytes(StandardCharsets.UTF_8);
+		InputStream in = new InputStream() {
+			private int next;
+
+			@Override
+			public int read() throws IOException {
+				if (next < bytes.length) {
+					return bytes[next++] & 0xff;
+				}
+				throw failure;
+			}
+
+			@Override
+			public int read(byte[] b, int off, int len) throws IOException {
+				if (next < bytes.length) {
+					int n = Math.min(len, bytes.length - next);
+					System.arraycopy(bytes, next, b, off, n);
+					next += n;
+					return n;
+				}
+				throw failure;
+			}
+		};
+		return new UrlFetcher.FetchedBody(URI.create(url), "application/json", StandardCharsets.UTF_8, stream(in, -1));
+	}
+
+	private static TransferStream stream(InputStream in, long length) {
+		return new TransferStream(in, length, System.nanoTime() + TimeUnit.HOURS.toNanos(1), () -> {
+		});
 	}
 }

@@ -102,7 +102,7 @@ Five service classes expose MCP tools via `@McpTool` annotations:
 - **IndexingService** (`indexing/`) - Document indexing supporting JSON, CSV, XML, and markdown formats
 - **CollectionService** (`collection/`) - List collections, get stats, health checks
 - **SchemaService** (`schema/`) - Schema introspection and additive modification (add-fields, add-field-types)
-- **UrlIndexingService** (`indexing/`) - `index-url`: fetches an allow-listed http(s) URL (GitHub raw content by default, `SOLR_INDEX_URL_ALLOWED_HOSTS`), capped at `SOLR_INDEX_URL_MAX_BYTES` (10 MB), and indexes the body as the inline tool for its format would via `IndexingService.indexPayload` (CSV/XML forwarded to Solr's update handlers, JSON/Markdown parsed by the server)
+- **UrlIndexingService** (`indexing/`) - `index-url`: fetches an allow-listed http(s) URL (GitHub raw content by default, `SOLR_INDEX_URL_ALLOWED_HOSTS`) with no size limit. JSON, CSV and XML stream straight into Solr's update handlers (`IndexingService.sendUncommitted`; JSON via `/update/json/docs`, which flattens nested objects to dotted field names) and are committed only once `TransferStream` confirms the whole body arrived; Markdown is read whole and parsed by the server
 
 ### Document Creators and pass-throughs
 
@@ -414,7 +414,7 @@ Environment variables:
 - `PROFILES`: Transport mode (`stdio` or `http`)
 - `OAUTH2_ISSUER_URI`: OAuth2 issuer URL (HTTP mode only)
 - `SOLR_INDEX_URL_ALLOWED_HOSTS`: hosts `index-url` may fetch (default `raw.githubusercontent.com,*.githubusercontent.com,github.com`; `*` = any)
-- `SOLR_INDEX_URL_MAX_BYTES`, `SOLR_INDEX_URL_CONNECT_TIMEOUT`, `SOLR_INDEX_URL_READ_TIMEOUT`, `SOLR_INDEX_URL_TOTAL_TIMEOUT`, `SOLR_INDEX_URL_MAX_CONCURRENT_FETCHES`: `index-url` body cap, timeouts and concurrency limit (defaults `10MB`, `10s`, `30s`, `5m`, `4`)
+- `SOLR_INDEX_URL_CONNECT_TIMEOUT`, `SOLR_INDEX_URL_READ_TIMEOUT`, `SOLR_INDEX_URL_TOTAL_TIMEOUT`, `SOLR_INDEX_URL_MAX_CONCURRENT_FETCHES`: `index-url` timeouts and concurrency limit (defaults `10s`, `30s`, `5m`, `4`); there is no size limit
 
 Dependencies managed in `gradle/libs.versions.toml`.
 

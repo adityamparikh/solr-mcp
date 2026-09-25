@@ -1,7 +1,8 @@
 # Spec: streaming `index-url` and indexing local files
 
 **Date:** 2026-09-24
-**Status:** proposed — records the agreed approach; nothing here is implemented yet
+**Status:** phase A (§3) implemented in PR #210 on 2026-09-24, with S5 changed to "no
+Markdown limit" (see S5); phase B (§4) not started
 **Builds on:** [`2026-09-15-url-ingestion-design.md`](2026-09-15-url-ingestion-design.md)
 (`index-url`, PR #210, issue #208), whose §10 this spec replaces.
 
@@ -104,14 +105,18 @@ longer applies to `index-url` JSON (field-name sanitising is being removed anywa
 PR #235). This is the same trade #205 made for CSV and XML. Use
 `/update/json/docs` rather than `/update`: on `/update`, a nested map such as
 `{"set": "x"}` is read as an atomic-update instruction, which is not what a user
-indexing a data file means. **To verify with a test before implementing:** how
-`/update/json/docs` with default parameters treats nested objects and arrays of
-objects on the Solr versions in the compatibility matrix (8.11, 9.x, 10).
+indexing a data file means. **Verified** (`UrlIndexingIntegrationTest`, Solr 8.11,
+9.9 and 10 with the `_default` configset): a nested object becomes dot-joined fields
+on the same document (`{"studio":{"name":"Acme"}}` → `studio.name=Acme`), identically
+on all three.
 
-**S5. Markdown keeps a fixed internal cap.** Solr cannot parse Markdown, so the server
-must read the whole document. Keep a bound, but make it an internal constant (10 MB),
-not an operator property: a single Markdown document of that size is already far
-beyond what this tool is for. The error says so and names the size.
+**S5. Markdown is read whole, with no limit (decided 2026-09-24).** Solr cannot parse
+Markdown, so the server reads the whole document and parses it. A fixed internal cap
+was proposed; the maintainer chose no limit for now, to keep the interface free of
+size limits, with limits and checks to be added later if needed. The consequence —
+a very large Markdown file at an allow-listed URL is held in memory for the call,
+bounded only by the concurrency limit and timeouts — is recorded in
+`THREAT_MODEL.md` §9.
 
 **S6. A partial transfer must never be reported, or committed, as success.**
 This is the main correctness risk, found while verifying S1: when the content writer
@@ -152,11 +157,16 @@ index-url(collection, url, format?)
 ```
 
 - Same three arguments. No size limit to explain for JSON/CSV/XML.
-- Reply: CSV/XML/JSON → Solr's acceptance plus the byte count transferred (Solr's
-  update response carries no document count; the `index-data` prompt already verifies
-  the count in its next step). Markdown → the document count, as today.
+- Reply: CSV/XML/JSON → `Solr accepted the <FORMAT> document (<n> bytes) for
+  collection '<c>' and committed it (status …, … ms)`. Solr's update response carries
+  no document count; the `index-data` prompt already verifies the count in its next
+  step. Markdown → the document count, as today.
 - Configuration removed: `SOLR_INDEX_URL_MAX_BYTES`. Kept: allowed hosts, the three
   timeouts, the concurrency limit.
+- Partial transfer: `The URL stopped delivering the document after <n> bytes, so what
+  Solr received was not committed. …` (or `did not deliver the whole document within
+  the read or total timeout` for a timeout); a failure before the first byte reports
+  the existing unreachable/timeout messages instead.
 
 ### 3.3 Tests to add
 
@@ -247,15 +257,17 @@ be able to reach Solr.
 
 | Phase | Scope | Depends on |
 |---|---|---|
-| A | §3: stream JSON/CSV/XML in `index-url`, remove `SOLR_INDEX_URL_MAX_BYTES`, fixed Markdown cap, partial-transfer handling | PR #210; S4 verification |
+| A (done) | §3: stream JSON/CSV/XML in `index-url`, remove `SOLR_INDEX_URL_MAX_BYTES`, partial-transfer handling | PR #210 |
 | B | §4.2: `index-file` via SEP-2631, both transports, reusing phase A | SEP-2631 accepted; Spring AI support |
 
 Phase A can land in PR #210 itself or as a follow-up PR; it changes no tool signature.
 
 ## 6. Open questions
 
-1. S4: exact `/update/json/docs` handling of nested objects across Solr 8.11, 9.x, 10.
-2. S6: whether to report the byte count, or nothing, on success for streamed formats.
-3. S3: the mark limit for the XML prolog peek (proposed 64 KB).
-4. Whether the concurrency limit and total timeout defaults (4, 5 m) still fit once
-   the size cap is gone.
+1. Whether the concurrency limit and total timeout defaults (4, 5 m) still fit now
+   that the size cap is gone; the total timeout is the practical bound on file size.
+2. Whether Markdown should regain a limit (S5).
+
+Resolved during phase A: S4 (verified, above); the success reply reports the byte
+count; the XML root must start within the first 64 KB
+(`SolrUpdateXml.ROOT_WITHIN_BYTES`).

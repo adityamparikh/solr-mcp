@@ -26,6 +26,7 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.request.CollectionAdminRequest;
 import org.apache.solr.client.solrj.request.SolrQuery;
@@ -45,15 +46,17 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * loopback port serves the documents, the real service indexes them into a real
  * Solr. The allow-list is bound from configuration to {@code 127.0.0.1} only,
  * which is why the metadata-address refusal is exercised by the MCP client
- * tests (allow-list {@code *}) rather than here. The cap is lowered to 64 KB so
- * the over-cap case is small.
+ * tests (allow-list {@code *}) rather than here.
  */
 @SpringBootTest
 @Import(TestcontainersConfiguration.class)
-@TestPropertySource(properties = {"solr.index-url.allowed-hosts=127.0.0.1", "solr.index-url.max-bytes=64KB"})
+@TestPropertySource(properties = "solr.index-url.allowed-hosts=127.0.0.1")
 @Tag("integration")
 @Testcontainers(disabledWithoutDocker = true)
 class UrlIndexingIntegrationTest {
+
+	private static final int BIG_ROWS = 250_000;
+	private static final String PADDING = "x".repeat(20);
 
 	private static HttpServer server;
 	private static String base;
@@ -87,7 +90,29 @@ class UrlIndexingIntegrationTest {
 		});
 		server.createContext("/plain.xml", ex -> respond(ex, 200, "application/xml",
 				"<shows><show><id>1</id></show></shows>".getBytes(StandardCharsets.UTF_8)));
-		server.createContext("/big.csv", ex -> respond(ex, 200, "text/csv", csv("big", 6_000))); // ~100 KB
+		server.createContext("/big.csv", ex -> {
+			// ~11 MB, more than the old 10 MB cap, written as it goes rather than held
+			ex.getResponseHeaders().add("Content-Type", "text/csv");
+			ex.sendResponseHeaders(200, 0);
+			try (OutputStream out = ex.getResponseBody()) {
+				out.write("id,title\n".getBytes(StandardCharsets.UTF_8));
+				for (int i = 0; i < BIG_ROWS; i++) {
+					out.write(("big-" + i + ",Title " + i + " " + PADDING + "\n").getBytes(StandardCharsets.UTF_8));
+				}
+			}
+		});
+		server.createContext("/cut.csv", ex -> {
+			// declares far more than it sends, then hangs up: a transfer that fails partway
+			ex.getResponseHeaders().add("Content-Type", "text/csv");
+			ex.sendResponseHeaders(200, 1_000_000);
+			ex.getResponseBody().write(csv("cut", 20));
+			ex.getResponseBody().flush();
+			ex.close();
+		});
+		server.createContext("/nested.json",
+				ex -> respond(ex, 200, "application/json",
+						"[{\"id\":\"n-1\",\"title\":\"One\",\"studio\":{\"name\":\"Acme\",\"country\":\"US\"}}]"
+								.getBytes(StandardCharsets.UTF_8)));
 		server.start();
 		base = "http://127.0.0.1:" + server.getAddress().getPort();
 	}
@@ -101,8 +126,7 @@ class UrlIndexingIntegrationTest {
 	void indexesJsonServedAsTextPlainByExtension() throws Exception {
 		String collection = newCollection("json");
 		String summary = service.indexUrl(collection, base + "/shows.json", null);
-		assertTrue(summary.contains("61 of 61"), summary);
-		assertTrue(summary.contains("Indexed field names"), "structured formats list their fields: " + summary);
+		assertTrue(summary.startsWith("Solr accepted the JSON document"), summary);
 		assertFalse(summary.contains("Stranger Things"), "payload leaked into the summary");
 		assertEquals(61, count(collection));
 	}
@@ -113,18 +137,17 @@ class UrlIndexingIntegrationTest {
 		// CSV and XML go to Solr's own update handler, as with the inline tools, so
 		// the summary is Solr's acceptance rather than a count.
 		String csvSummary = service.indexUrl(csv, base + "/shows.csv", null);
-		assertTrue(csvSummary.contains("Solr accepted the CSV payload"), csvSummary);
+		assertTrue(csvSummary.contains("Solr accepted the CSV document"), csvSummary);
 		assertEquals(50, count(csv));
 
 		String xml = newCollection("xml");
 		String xmlSummary = service.indexUrl(xml, base + "/shows.xml", null);
-		assertTrue(xmlSummary.contains("Solr accepted the XML <add> block"), xmlSummary);
+		assertTrue(xmlSummary.contains("Solr accepted the XML document"), xmlSummary);
 		assertEquals(40, count(xml));
 
 		String md = newCollection("md");
 		String mdSummary = service.indexUrl(md, base + "/shows.md", null);
 		assertTrue(mdSummary.contains("1 of 1"), mdSummary);
-		assertFalse(mdSummary.contains("Indexed field names"), "Markdown is one document, no field list: " + mdSummary);
 		assertEquals(1, count(md));
 	}
 
@@ -135,14 +158,14 @@ class UrlIndexingIntegrationTest {
 		assertEquals(30, count(byExtension));
 
 		String byMediaType = newCollection("mediatype");
-		assertTrue(service.indexUrl(byMediaType, base + "/data", null).contains("61 of 61"));
+		assertTrue(service.indexUrl(byMediaType, base + "/data", null).contains("Solr accepted"));
 		assertEquals(61, count(byMediaType));
 	}
 
 	@Test
 	void followsARedirect() throws Exception {
 		String collection = newCollection("redirect");
-		assertTrue(service.indexUrl(collection, base + "/moved", null).contains("61 of 61"));
+		assertTrue(service.indexUrl(collection, base + "/moved", null).contains("Solr accepted"));
 		assertEquals(61, count(collection));
 	}
 
@@ -165,13 +188,6 @@ class UrlIndexingIntegrationTest {
 						+ "Check that it is public and points at a raw document, not a web page.",
 				missing.getMessage());
 
-		var big = assertThrows(IllegalArgumentException.class,
-				() -> service.indexUrl(collection, base + "/big.csv", null));
-		// 64 KB is not a whole number of megabytes, so the limit renders in bytes
-		assertEquals("The document is larger than this server's limit of 65536 bytes; nothing was indexed. "
-				+ "Index datasets this large directly with Solr (bin/solr post or the /update handler); "
-				+ "the index-data prompt shows the command.", big.getMessage());
-
 		// Only a Solr <add> block is accepted, as for index-xml-documents.
 		var plainXml = assertThrows(IllegalArgumentException.class,
 				() -> service.indexUrl(collection, base + "/plain.xml", null));
@@ -183,6 +199,42 @@ class UrlIndexingIntegrationTest {
 
 		solrClient.commit(collection);
 		assertEquals(0, count(collection));
+	}
+
+	@Test
+	void streamsADocumentLargerThanTheOldCap() throws Exception {
+		String collection = newCollection("big");
+		String summary = service.indexUrl(collection, base + "/big.csv", null);
+		assertTrue(summary.startsWith("Solr accepted the CSV document"), summary);
+		assertEquals(BIG_ROWS, count(collection));
+	}
+
+	/**
+	 * The source hangs up after 20 rows. Solr may accept the rows it got, but the
+	 * tool must report the failure and must not commit, so nothing is visible.
+	 */
+	@Test
+	void aTransferThatFailsPartwayIsReportedAndNotCommitted() throws Exception {
+		String collection = newCollection("cut");
+		var e = assertThrows(IllegalStateException.class, () -> service.indexUrl(collection, base + "/cut.csv", null));
+		assertTrue(e.getMessage().startsWith("The URL stopped delivering the document after"), e.getMessage());
+		assertEquals(0, count(collection), "a partial transfer must not be committed");
+	}
+
+	/**
+	 * The server no longer flattens JSON for {@code index-url}; Solr's
+	 * {@code /update/json/docs} does, joining the path with dots. Observed the same
+	 * on Solr 8.11, 9.9 and 10.
+	 */
+	@Test
+	void jsonWithANestedObjectIsIndexedAsOneDocument() throws Exception {
+		String collection = newCollection("nested");
+		assertTrue(service.indexUrl(collection, base + "/nested.json", null).startsWith("Solr accepted"));
+		assertEquals(1, count(collection));
+		var doc = solrClient.query(collection, new SolrQuery("id:n-1")).getResults().get(0);
+		assertEquals(List.of("One"), doc.getFieldValues("title"));
+		assertEquals(List.of("Acme"), doc.getFieldValues("studio.name"));
+		assertEquals(List.of("US"), doc.getFieldValues("studio.country"));
 	}
 
 	private String newCollection(String suffix) throws Exception {
@@ -201,7 +253,7 @@ class UrlIndexingIntegrationTest {
 		try (OutputStream out = exchange.getResponseBody()) {
 			out.write(body);
 		} catch (IOException ignored) {
-			// the client stops reading an over-cap body early
+			// the client may stop reading early
 		}
 	}
 

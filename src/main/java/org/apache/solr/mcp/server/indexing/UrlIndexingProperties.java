@@ -20,7 +20,6 @@ import java.time.Duration;
 import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
-import org.springframework.util.unit.DataSize;
 
 /**
  * Limits on {@code index-url} fetches. Hosts are allow-listed (GitHub raw
@@ -28,9 +27,9 @@ import org.springframework.util.unit.DataSize;
  * known cloud-metadata addresses are refused regardless. The read timeout
  * applies to every socket read, so it bounds a body that stops arriving; the
  * total timeout bounds a whole fetch including redirects, so a host that drips
- * bytes cannot hold a call open indefinitely; the size cap bounds memory per
- * call, because the body is parsed in memory; and the concurrency limit bounds
- * how many such calls run at once.
+ * bytes cannot hold a call open indefinitely; and the concurrency limit bounds
+ * how many such calls run at once. There is no size cap: JSON, CSV and XML
+ * bodies stream into Solr, and Markdown is read in full.
  *
  * @param allowedHosts
  *            exact hosts, {@code *.suffix} patterns, or {@code *}
@@ -41,9 +40,6 @@ import org.springframework.util.unit.DataSize;
  * @param readTimeout
  *            longest wait for any single read, headers or body
  *            ({@code SOLR_INDEX_URL_READ_TIMEOUT})
- * @param maxBytes
- *            body size cap, between 1 byte and 2 GB
- *            ({@code SOLR_INDEX_URL_MAX_BYTES})
  * @param totalTimeout
  *            deadline for one whole fetch, redirects included
  *            ({@code SOLR_INDEX_URL_TOTAL_TIMEOUT})
@@ -55,14 +51,10 @@ import org.springframework.util.unit.DataSize;
 public record UrlIndexingProperties(@DefaultValue( {
 		"raw.githubusercontent.com", "*.githubusercontent.com", "github.com"}) List<String> allowedHosts,
 		@DefaultValue("10s") Duration connectTimeout, @DefaultValue("30s") Duration readTimeout,
-		@DefaultValue("10MB") DataSize maxBytes, @DefaultValue("5m") Duration totalTimeout,
-		@DefaultValue("4") int maxConcurrentFetches){
+		@DefaultValue("5m") Duration totalTimeout, @DefaultValue("4") int maxConcurrentFetches){
 
 	/** Fails at startup rather than on the first tool call. */
 	public UrlIndexingProperties {
-		if (maxBytes.toBytes() < 1 || maxBytes.toBytes() > Integer.MAX_VALUE - 1) {
-			throw new IllegalArgumentException("solr.index-url.max-bytes must be between 1 byte and 2 GB");
-		}
 		if (totalTimeout.isZero() || totalTimeout.isNegative()) {
 			throw new IllegalArgumentException("solr.index-url.total-timeout must be positive");
 		}

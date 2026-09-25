@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.concurrent.Semaphore;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.common.SolrException;
@@ -36,11 +37,11 @@ import org.springframework.stereotype.Service;
 
 /**
  * URL ingestion for both transports. The server fetches an http(s) URL whose
- * host is on the operator's allow-list (GitHub raw content by default), never
- * sends credentials or caller headers, caps the body, and indexes the decoded
- * payload exactly as the inline tool for its format would: CSV and XML go to
- * Solr's own update handler, JSON and Markdown are parsed by the server first.
- * A fetch failure leaves the collection untouched.
+ * host is on the operator's allow-list (GitHub raw content by default) and
+ * never sends credentials or caller headers. JSON, CSV and XML stream straight
+ * into Solr's update handlers, so a document of any size passes through a small
+ * buffer; the commit follows only once the whole body has arrived. Markdown,
+ * which Solr cannot parse, is read in full and parsed by the server.
  */
 @Service
 @Observed
@@ -58,6 +59,11 @@ public class UrlIndexingService {
 			+ "Supply format=json, csv, xml or markdown.";
 	static final String HTML_NOT_SUPPORTED = " HTML pages are not supported.";
 	static final String SOLR_REJECTED = "Solr rejected the URL content as %s: %s";
+	static final String PARTIAL_TRANSFER = "The URL %s after %d bytes, so what Solr received was not committed. "
+			+ "Documents Solr had already read may still appear in the collection. Re-run index-url to index the "
+			+ "whole document (documents with the same id are replaced), and check the count before relying on it.";
+	static final String STOPPED = "stopped delivering the document";
+	static final String TIMED_OUT = "did not deliver the whole document within the read or total timeout";
 	static final String SOLR_FAILED = "Solr could not complete URL indexing. Check collection availability and "
 			+ "field types with get-schema, then verify the indexed count before retrying; some documents may "
 			+ "already be indexed.";
@@ -74,7 +80,7 @@ public class UrlIndexingService {
 	 * @param indexingService
 	 *            the indexing pipeline
 	 * @param properties
-	 *            allow-list, timeouts, size cap and concurrency limit
+	 *            allow-list, timeouts and concurrency limit
 	 */
 	@Autowired
 	public UrlIndexingService(IndexingService indexingService, UrlIndexingProperties properties) {
@@ -113,17 +119,15 @@ public class UrlIndexingService {
 			description = "Index a UTF-8 JSON, CSV, Solr update XML or Markdown document set from an http(s) URL without "
 					+ "sending its contents through the model. Available in both STDIO and HTTP mode. The URL is "
 					+ "fetched by the MCP server with no credentials or custom headers; its host must be on the "
-					+ "server's allow-list (GitHub raw content by default) and the body must be within the configured "
-					+ "size limit (default 10 MB). For larger datasets, index directly with Solr (bin/solr post or the "
-					+ "/update handler) instead. Redirects are followed. Non-2xx responses and HTML pages are errors. "
-					+ "Each format is indexed as its inline tool would: CSV and XML (an <add> block, as for "
-					+ "index-xml-documents) go to Solr's own update handler, JSON and Markdown are parsed first. "
-					+ "Reuse the URL for another collection. " + IndexingService.SCHEMA_FIRST_GUIDANCE)
+					+ "server's allow-list (GitHub raw content by default). There is no size limit: JSON, CSV and XML "
+					+ "stream straight into Solr, and XML must be a Solr <add> block as for index-xml-documents; "
+					+ "Markdown is parsed by the server. Redirects are followed. Non-2xx responses and HTML pages are "
+					+ "errors. " + "Reuse the URL for another collection. " + IndexingService.SCHEMA_FIRST_GUIDANCE)
 	public String indexUrl(
 			@McpToolParam(description = "Solr collection to index into", required = true) String collection,
 			@McpToolParam(
-					description = "Absolute http or https URL of a UTF-8 JSON, CSV, Solr update XML or Markdown document, at most "
-							+ "the configured size limit (default 10 MB). The host must be on the server's allow-list "
+					description = "Absolute http or https URL of a UTF-8 JSON, CSV, Solr update XML or Markdown document, "
+							+ "of any size. The host must be on the server's allow-list "
 							+ "(GitHub raw content by default). Fetched from the MCP server's network, not the "
 							+ "client's. No credentials or custom headers are sent.",
 					required = true) String url,
@@ -154,25 +158,100 @@ public class UrlIndexingService {
 			logger.debug("Could not fetch URL for indexing", e);
 			throw new IllegalStateException(causedByTimeout(e) ? READ_TIMEOUT : UNREACHABLE);
 		}
-		String selected = explicit != null ? explicit : resolveFormat(uri, fetched.finalUri(), fetched.mediaType());
-		String payload = new String(fetched.body(), fetched.charset());
+		try (fetched) {
+			String selected = explicit != null ? explicit : resolveFormat(uri, fetched.finalUri(), fetched.mediaType());
+			return "markdown".equals(selected)
+					? indexMarkdown(collection, fetched)
+					: stream(collection, selected, fetched);
+		}
+	}
+
+	/** Reads the whole Markdown document, which the server parses itself. */
+	private String indexMarkdown(String collection, UrlFetcher.FetchedBody fetched) {
+		String markdown;
 		try {
-			return indexingService.indexPayload(collection, payload, selected);
+			markdown = new String(fetched.body().readAllBytes(), fetched.charset());
+		} catch (IOException e) {
+			logger.debug("Could not read URL content for indexing", e);
+			throw new IllegalStateException(causedByTimeout(e) ? READ_TIMEOUT : UNREACHABLE);
+		}
+		try {
+			return indexingService.indexMarkdown(collection, markdown);
 		} catch (DocumentProcessingException e) {
 			logger.debug("Could not parse URL content for indexing", e);
-			throw new IllegalArgumentException("Cannot parse the URL content as " + selected
-					+ ". Check its syntax and format. Nothing was indexed.");
-		} catch (SolrException e) {
-			if (e.code() == SolrException.ErrorCode.BAD_REQUEST.code) {
-				// CSV and XML are parsed by Solr, so their syntax errors arrive as a 400.
-				throw new IllegalArgumentException(SOLR_REJECTED.formatted(selected, e.getMessage()));
-			}
-			logger.warn("URL indexing failed for collection {}", collection, e);
-			throw new IllegalStateException(SOLR_FAILED);
-		} catch (SolrServerException | IOException e) {
+			throw new IllegalArgumentException(
+					"Cannot parse the URL content as markdown. Check its syntax and format. Nothing was indexed.");
+		} catch (SolrServerException | SolrException | IOException e) {
 			logger.warn("URL indexing failed for collection {}", collection, e);
 			throw new IllegalStateException(SOLR_FAILED);
 		}
+	}
+
+	/**
+	 * Streams JSON, CSV or XML into Solr, then commits only if the whole body
+	 * arrived. A failed transfer is checked first on every path, because Solr's
+	 * answer to a cut-off upload (success for a shorter CSV, a parse error for
+	 * truncated JSON or XML) says nothing about why it was cut off.
+	 */
+	private String stream(String collection, String format, UrlFetcher.FetchedBody fetched) {
+		TransferStream body = fetched.body();
+		try {
+			indexingService.sendUncommitted(collection, format, body, fetched.charset());
+		} catch (DocumentProcessingException e) {
+			throw failedTransfer(body).orElseGet(() -> {
+				logger.debug("Could not parse URL content for indexing", e);
+				return new IllegalArgumentException(
+						"Cannot parse the URL content as " + format + ". " + e.getMessage() + ". Nothing was indexed.");
+			});
+		} catch (SolrException e) {
+			throw failedTransfer(body).orElseGet(() -> {
+				if (e.code() == SolrException.ErrorCode.BAD_REQUEST.code) {
+					// Solr parses JSON, CSV and XML, so their syntax errors arrive as a 400.
+					return new IllegalArgumentException(SOLR_REJECTED.formatted(format, e.getMessage()));
+				}
+				logger.warn("URL indexing failed for collection {}", collection, e);
+				return new IllegalStateException(SOLR_FAILED);
+			});
+		} catch (SolrServerException | IOException e) {
+			throw failedTransfer(body).orElseGet(() -> {
+				logger.warn("URL indexing failed for collection {}", collection, e);
+				return new IllegalStateException(SOLR_FAILED);
+			});
+		}
+		try {
+			body.requireComplete();
+		} catch (IOException e) {
+			throw failedTransfer(body, e).orElseThrow();
+		}
+		try {
+			return indexingService.commitStreamed(collection, format.toUpperCase(Locale.ROOT) + " document",
+					body.bytesRead());
+		} catch (SolrServerException | SolrException | IOException e) {
+			logger.warn("URL indexing commit failed for collection {}", collection, e);
+			throw new IllegalStateException(SOLR_FAILED);
+		}
+	}
+
+	private static Optional<RuntimeException> failedTransfer(TransferStream body) {
+		return failedTransfer(body, body.failure());
+	}
+
+	/**
+	 * The error for a body that did not arrive whole: nothing reached Solr if no
+	 * byte was read, otherwise a partial transfer that was not committed. Empty if
+	 * there is no failure.
+	 */
+	private static Optional<RuntimeException> failedTransfer(TransferStream body, @Nullable IOException failure) {
+		if (failure == null) {
+			return Optional.empty();
+		}
+		logger.debug("URL body did not arrive whole", failure);
+		boolean timeout = causedByTimeout(failure);
+		if (body.bytesRead() == 0) {
+			return Optional.of(new IllegalStateException(timeout ? READ_TIMEOUT : UNREACHABLE));
+		}
+		return Optional.of(
+				new IllegalStateException(PARTIAL_TRANSFER.formatted(timeout ? TIMED_OUT : STOPPED, body.bytesRead())));
 	}
 
 	private static URI parse(String url) {

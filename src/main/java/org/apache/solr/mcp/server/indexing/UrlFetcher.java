@@ -16,9 +16,7 @@
  */
 package org.apache.solr.mcp.server.indexing;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.InetAddress;
 import java.net.SocketTimeoutException;
@@ -38,9 +36,10 @@ import org.springframework.web.client.RestClient;
  * Performs the {@code index-url} GET with Spring's {@link RestClient} over
  * {@code HttpURLConnection}: resolves and policy-checks the host on every hop,
  * follows up to {@value #MAX_REDIRECTS} redirects without downgrading to plain
- * http, sends only {@code Accept} and {@code User-Agent}, refuses bodies over
- * the configured cap, and returns the whole 2xx body with its media type and
- * charset. Caller-fixable problems surface as {@link IllegalArgumentException}
+ * http, sends only {@code Accept} and {@code User-Agent}, and returns the 2xx
+ * response still open, as a {@link TransferStream} with its media type and
+ * charset, for the caller to stream and close. Nothing is read into memory
+ * here. Caller-fixable problems surface as {@link IllegalArgumentException}
  * with the messages the tool returns verbatim; network failures surface as
  * {@link IOException}, which the read timeout turns into a
  * {@link java.net.SocketTimeoutException} when a body stops arriving.
@@ -60,12 +59,11 @@ final class UrlFetcher {
 
 	private final RestClient restClient;
 	private final List<String> allowedHosts;
-	private final int maxBytes;
 	private final long totalTimeoutNanos;
-	private final String tooLarge;
 
 	/**
-	 * A 2xx response, read in full.
+	 * A 2xx response whose body has not been read yet. Closing it releases the
+	 * connection.
 	 *
 	 * @param finalUri
 	 *            the URL that answered, after redirects
@@ -75,9 +73,15 @@ final class UrlFetcher {
 	 * @param charset
 	 *            the declared charset, or UTF-8 when none was declared
 	 * @param body
-	 *            the raw body bytes, at most the configured cap
+	 *            the body, to be read once; it enforces the whole-fetch deadline
+	 *            and records whether it was read to its end
 	 */
-	record FetchedBody(URI finalUri, String mediaType, Charset charset, byte[] body) {
+	record FetchedBody(URI finalUri, String mediaType, Charset charset, TransferStream body) implements AutoCloseable {
+
+		@Override
+		public void close() {
+			body.close();
+		}
 	}
 
 	/** Outcome of one request; only a 2xx carries a body. */
@@ -90,7 +94,7 @@ final class UrlFetcher {
 	private record Status(int code) implements Exchange {
 	}
 
-	private record Body(String mediaType, Charset charset, byte[] bytes) implements Exchange {
+	private record Body(String mediaType, Charset charset, TransferStream stream) implements Exchange {
 	}
 
 	UrlFetcher(UrlIndexingProperties properties) {
@@ -105,13 +109,7 @@ final class UrlFetcher {
 		factory.setReadTimeout(properties.readTimeout());
 		this.restClient = RestClient.builder().requestFactory(factory).build();
 		this.allowedHosts = properties.allowedHosts();
-		this.maxBytes = (int) properties.maxBytes().toBytes(); // the record bounds it below Integer.MAX_VALUE
 		this.totalTimeoutNanos = properties.totalTimeout().toNanos();
-		long bytes = properties.maxBytes().toBytes();
-		String limit = bytes % 1048576 == 0 ? properties.maxBytes().toMegabytes() + " MB" : bytes + " bytes";
-		this.tooLarge = "The document is larger than this server's limit of " + limit + "; nothing was indexed. "
-				+ "Index datasets this large directly with Solr (bin/solr post or the /update handler); "
-				+ "the index-data prompt shows the command.";
 	}
 
 	/**
@@ -119,11 +117,10 @@ final class UrlFetcher {
 	 *
 	 * @param uri
 	 *            the caller-supplied URL
-	 * @return the 2xx response, read in full
+	 * @return the 2xx response, open; the caller must close it
 	 * @throws IllegalArgumentException
 	 *             for a refused URL or host, too many redirects, an https to http
-	 *             downgrade, a non-2xx status, an unsupported charset, or a body
-	 *             over the cap
+	 *             downgrade, a non-2xx status, or an unsupported charset
 	 * @throws IOException
 	 *             if the host does not resolve, the connection fails, or a read
 	 *             times out ({@link java.net.SocketTimeoutException})
@@ -157,7 +154,7 @@ final class UrlFetcher {
 				case Status status -> throw new IllegalArgumentException("The URL returned HTTP " + status.code()
 						+ "; nothing was indexed. Check that it is public and points at a raw document, not a web page.");
 				case Body body -> {
-					return new FetchedBody(current, body.mediaType(), body.charset(), body.bytes());
+					return new FetchedBody(current, body.mediaType(), body.charset(), body.stream());
 				}
 			}
 		}
@@ -182,47 +179,41 @@ final class UrlFetcher {
 
 	private Exchange send(URI uri, long deadline) throws IOException {
 		try {
+			// close=false: a 2xx response stays open for the caller to stream; every
+			// other outcome is released here before returning or throwing.
 			return restClient.get().uri(uri).header("Accept", ACCEPT).header("User-Agent", USER_AGENT)
 					.exchange((request, response) -> {
-						int status = response.getStatusCode().value();
-						if (isRedirect(status)) {
-							String location = response.getHeaders().getFirst("Location");
-							if (location != null) {
-								abandon(response);
-								return new Redirect(location);
+						try {
+							int status = response.getStatusCode().value();
+							if (isRedirect(status)) {
+								String location = response.getHeaders().getFirst("Location");
+								if (location != null) {
+									release(response);
+									return new Redirect(location);
+								}
 							}
-						}
-						if (status / 100 != 2) {
-							abandon(response);
-							return new Status(status);
-						}
-						String contentType = response.getHeaders().getFirst("Content-Type");
-						if (contentType == null) {
-							contentType = "";
-						}
-						Charset charset;
-						try {
-							charset = charsetOf(contentType);
-						} catch (IllegalCharsetNameException | UnsupportedCharsetException e) {
-							throw new IllegalArgumentException(UNSUPPORTED_CHARSET);
-						}
-						if (contentLengthOf(response.getHeaders()) > maxBytes) {
-							abandon(response); // before reading a byte
-							throw new IllegalArgumentException(tooLarge);
-						}
-						byte[] bytes;
-						try {
-							bytes = readCapped(response.getBody(), maxBytes + 1, deadline);
-						} catch (IOException e) {
-							abandon(response); // a deadline or read failure must not turn into a drain
+							if (status / 100 != 2) {
+								release(response);
+								return new Status(status);
+							}
+							String contentType = response.getHeaders().getFirst("Content-Type");
+							if (contentType == null) {
+								contentType = "";
+							}
+							Charset charset;
+							try {
+								charset = charsetOf(contentType);
+							} catch (IllegalCharsetNameException | UnsupportedCharsetException e) {
+								throw new IllegalArgumentException(UNSUPPORTED_CHARSET);
+							}
+							var body = new TransferStream(response.getBody(), contentLengthOf(response.getHeaders()),
+									deadline, () -> release(response));
+							return new Body(mediaTypeOf(contentType), charset, body);
+						} catch (IOException | RuntimeException e) {
+							release(response);
 							throw e;
 						}
-						if (bytes.length > maxBytes) {
-							abandon(response);
-							throw new IllegalArgumentException(tooLarge);
-						}
-						return new Body(mediaTypeOf(contentType), charset, bytes);
-					});
+					}, false);
 		} catch (ResourceAccessException e) {
 			if (e.getCause() instanceof IOException io) {
 				throw io;
@@ -232,36 +223,19 @@ final class UrlFetcher {
 	}
 
 	/**
-	 * Closes the body stream before Spring's own {@code close()} runs. Spring
-	 * drains an unread body to keep the connection reusable, which would download a
-	 * refused or over-cap response in full; closing the stream first makes the JDK
-	 * drop the connection (or hand at most a small remainder to its keep-alive
-	 * cleaner) and turns Spring's drain into a no-op on a closed stream.
+	 * Closes the body stream, then the response. Spring's {@code close()} drains an
+	 * unread body to keep the connection reusable, which would download a refused
+	 * or abandoned response in full; closing the stream first makes the JDK drop
+	 * the connection (or hand at most a small remainder to its keep-alive cleaner)
+	 * and turns Spring's drain into a no-op on a closed stream. Safe to call twice.
 	 */
-	private static void abandon(org.springframework.http.client.ClientHttpResponse response) {
+	private static void release(org.springframework.http.client.ClientHttpResponse response) {
 		try {
 			response.getBody().close();
 		} catch (IOException ignored) {
 			// nothing to abandon
 		}
-	}
-
-	/**
-	 * Reads at most {@code limit} bytes, checking the total deadline after every
-	 * chunk so a host that keeps sending slowly cannot outlast the per-read
-	 * timeout.
-	 */
-	private static byte[] readCapped(InputStream in, int limit, long deadline) throws IOException {
-		var out = new ByteArrayOutputStream();
-		byte[] buffer = new byte[8192];
-		int n;
-		while (out.size() < limit && (n = in.read(buffer, 0, Math.min(buffer.length, limit - out.size()))) != -1) {
-			out.write(buffer, 0, n);
-			if (System.nanoTime() - deadline > 0) {
-				throw new SocketTimeoutException("total timeout exceeded while reading the body");
-			}
-		}
-		return out.toByteArray();
+		response.close();
 	}
 
 	/** {@code Content-Length} as a long, or -1 when absent or not a number. */

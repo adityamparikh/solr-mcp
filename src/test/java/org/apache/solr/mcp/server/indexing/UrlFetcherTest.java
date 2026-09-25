@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import java.io.EOFException;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
@@ -40,22 +41,17 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.http.HttpHeaders;
-import org.springframework.util.unit.DataSize;
 
 /**
  * Drives the fetcher against a JDK HTTP server on an ephemeral loopback port:
- * no mocks, no Solr, runs natively. Read timeout 1 s and cap 1 KB keep the
- * failure cases fast.
+ * no mocks, no Solr, runs natively. A 1 s read timeout keeps the failure cases
+ * fast.
  */
 class UrlFetcherTest {
 
 	private static final Duration CONNECT = Duration.ofSeconds(5);
 	private static final Duration READ = Duration.ofSeconds(1);
-	private static final DataSize CAP = DataSize.ofKilobytes(1);
 	private static final Duration TOTAL = Duration.ofMinutes(5);
-	private static final String SIZE_MESSAGE = "The document is larger than this server's limit of 1024 bytes; "
-			+ "nothing was indexed. Index datasets this large directly with Solr (bin/solr post or the /update "
-			+ "handler); the index-data prompt shows the command.";
 
 	private HttpServer server;
 	private ExecutorService handlers;
@@ -100,7 +96,7 @@ class UrlFetcherTest {
 			ex.sendResponseHeaders(200, 0);
 			try (OutputStream out = ex.getResponseBody()) {
 				for (int i = 0; i < 100; i++) {
-					out.write('x'); // one byte every 200 ms: under the cap, never idle, never finishing soon
+					out.write('x'); // one byte every 200 ms: never idle, never finishing soon
 					out.flush();
 					sleep(200);
 				}
@@ -111,7 +107,7 @@ class UrlFetcherTest {
 		server.createContext("/slow-big", ex -> {
 			record(ex);
 			ex.getResponseHeaders().add("Content-Type", "text/csv");
-			ex.sendResponseHeaders(200, 2 * 1024 * 1024); // far over the 1 KB cap
+			ex.sendResponseHeaders(200, 2 * 1024 * 1024);
 			try (OutputStream out = ex.getResponseBody()) {
 				for (int i = 0; i < 2048; i++) {
 					out.write(new byte[1024]); // steady 10 KB/s: never idle, so a drain would run for minutes
@@ -127,27 +123,22 @@ class UrlFetcherTest {
 			server.createContext("/chain" + hop,
 					ex -> redirect(ex, base + (hop == 1 ? "/shows.json" : "/chain" + (hop - 1))));
 		}
-		server.createContext("/declared-big", ex -> {
+		server.createContext("/short", ex -> {
 			record(ex);
 			ex.getResponseHeaders().add("Content-Type", "text/csv");
-			ex.sendResponseHeaders(200, 2048);
-			try (OutputStream out = ex.getResponseBody()) {
-				out.write(1); // the JDK server flushes the headers with the first body byte
-				out.flush();
-				sleep(3000); // a client that read on would hit the 1 s read timeout instead
-				out.write(new byte[2047]);
-			} catch (IOException ignored) {
-				// the client went away, as expected
-			}
+			ex.sendResponseHeaders(200, 2048); // declares 2048 bytes, then hangs up after 10
+			ex.getResponseBody().write(new byte[10]);
+			ex.getResponseBody().flush();
+			ex.close();
 		});
 		server.createContext("/chunked-big", ex -> {
 			record(ex);
 			ex.getResponseHeaders().add("Content-Type", "text/csv");
 			ex.sendResponseHeaders(200, 0);
 			try (OutputStream out = ex.getResponseBody()) {
-				out.write(new byte[1025]);
-			} catch (IOException ignored) {
-				// the client may abort mid-body
+				for (int i = 0; i < 16; i++) {
+					out.write(new byte[1024 * 1024]); // 16 MB, larger than the old 10 MB cap
+				}
 			}
 		});
 		server.createContext("/stall", ex -> {
@@ -164,11 +155,11 @@ class UrlFetcherTest {
 		});
 		server.start();
 		base = "http://127.0.0.1:" + server.getAddress().getPort();
-		open = new UrlFetcher(new UrlIndexingProperties(List.of("*"), CONNECT, READ, CAP, TOTAL, 4));
-		restricted = new UrlFetcher(new UrlIndexingProperties(List.of("127.0.0.1"), CONNECT, READ, CAP, TOTAL, 4));
+		open = new UrlFetcher(new UrlIndexingProperties(List.of("*"), CONNECT, READ, TOTAL, 4));
+		restricted = new UrlFetcher(new UrlIndexingProperties(List.of("127.0.0.1"), CONNECT, READ, TOTAL, 4));
 		// a read timeout longer than the total deadline, so only the deadline can fire
 		dripping = new UrlFetcher(
-				new UrlIndexingProperties(List.of("*"), CONNECT, Duration.ofSeconds(5), CAP, Duration.ofSeconds(1), 4));
+				new UrlIndexingProperties(List.of("*"), CONNECT, Duration.ofSeconds(5), Duration.ofSeconds(1), 4));
 	}
 
 	@AfterEach
@@ -179,22 +170,33 @@ class UrlFetcherTest {
 
 	@Test
 	void returnsBodyMediaTypeAndCharsetOfATwoHundredResponse() throws Exception {
-		var fetched = open.fetch(URI.create(base + "/shows.json"));
-		assertEquals("application/json", fetched.mediaType());
-		assertEquals(StandardCharsets.UTF_8, fetched.charset());
-		assertEquals("[{\"id\":\"1\"}]", new String(fetched.body(), StandardCharsets.UTF_8));
-		assertEquals(URI.create(base + "/shows.json"), fetched.finalUri());
+		try (var fetched = open.fetch(URI.create(base + "/shows.json"))) {
+			assertEquals("application/json", fetched.mediaType());
+			assertEquals(StandardCharsets.UTF_8, fetched.charset());
+			assertEquals("[{\"id\":\"1\"}]", new String(fetched.body().readAllBytes(), StandardCharsets.UTF_8));
+			assertEquals(URI.create(base + "/shows.json"), fetched.finalUri());
+			assertDoesNotThrow(fetched.body()::requireComplete);
+			assertEquals(12, fetched.body().bytesRead());
+		}
+	}
+
+	@Test
+	void aBodyNotReadToItsEndIsNotComplete() throws Exception {
+		try (var fetched = open.fetch(URI.create(base + "/shows.json"))) {
+			assertEquals('[', fetched.body().read());
+			assertThrows(EOFException.class, fetched.body()::requireComplete);
+		}
 	}
 
 	@Test
 	void honoursAQuotedCharset() throws Exception {
-		assertEquals(StandardCharsets.ISO_8859_1, open.fetch(URI.create(base + "/quoted-charset")).charset());
+		assertEquals(StandardCharsets.ISO_8859_1, fetched(open, base + "/quoted-charset").charset());
 	}
 
 	@ParameterizedTest
 	@ValueSource(ints = {301, 303, 307, 308})
 	void followsEveryRedirectStatus(int status) throws Exception {
-		assertEquals(URI.create(base + "/shows.json"), open.fetch(URI.create(base + "/r" + status)).finalUri());
+		assertEquals(URI.create(base + "/shows.json"), fetched(open, base + "/r" + status).finalUri());
 	}
 
 	@Test
@@ -212,14 +214,14 @@ class UrlFetcherTest {
 
 	/**
 	 * Spring's response close() drains the body to keep the connection alive; the
-	 * fetcher must drop the connection instead, or a refused 2 MB body streamed at
-	 * 10 KB/s would hold the call open for minutes.
+	 * fetcher must drop the connection instead, or an abandoned 2 MB body streamed
+	 * at 10 KB/s would hold the call open for minutes.
 	 */
 	@Test
-	void anOverCapBodyIsNotDrainedAfterRefusal() {
+	void closingAnUnreadBodyDoesNotDrainIt() {
 		assertTimeoutPreemptively(Duration.ofSeconds(5), () -> {
-			var e = assertThrows(IllegalArgumentException.class, () -> open.fetch(URI.create(base + "/slow-big")));
-			assertEquals(SIZE_MESSAGE, e.getMessage());
+			var fetched = open.fetch(URI.create(base + "/slow-big"));
+			fetched.close();
 		});
 	}
 
@@ -229,8 +231,12 @@ class UrlFetcherTest {
 	 */
 	@Test
 	void aDrippingBodyFailsAtTheTotalDeadline() {
-		assertTimeoutPreemptively(Duration.ofSeconds(4),
-				() -> assertThrows(SocketTimeoutException.class, () -> dripping.fetch(URI.create(base + "/drip"))));
+		assertTimeoutPreemptively(Duration.ofSeconds(4), () -> {
+			try (var fetched = dripping.fetch(URI.create(base + "/drip"))) {
+				assertThrows(SocketTimeoutException.class, fetched.body()::readAllBytes);
+				assertInstanceOf(SocketTimeoutException.class, fetched.body().failure());
+			}
+		});
 	}
 
 	@Test
@@ -245,12 +251,12 @@ class UrlFetcherTest {
 
 	@Test
 	void honoursADeclaredCharset() throws Exception {
-		assertEquals(StandardCharsets.ISO_8859_1, open.fetch(URI.create(base + "/latin1.csv")).charset());
+		assertEquals(StandardCharsets.ISO_8859_1, fetched(open, base + "/latin1.csv").charset());
 	}
 
 	@Test
 	void defaultsToUtf8AndEmptyMediaTypeWithoutContentType() throws Exception {
-		var fetched = open.fetch(URI.create(base + "/untyped"));
+		var fetched = fetched(open, base + "/untyped");
 		assertEquals("", fetched.mediaType());
 		assertEquals(StandardCharsets.UTF_8, fetched.charset());
 	}
@@ -270,13 +276,13 @@ class UrlFetcherTest {
 
 	@Test
 	void followsAbsoluteAndRelativeRedirectsToTheFinalUrl() throws Exception {
-		assertEquals(URI.create(base + "/shows.json"), open.fetch(URI.create(base + "/moved")).finalUri());
-		assertEquals(URI.create(base + "/shows.json"), open.fetch(URI.create(base + "/relative")).finalUri());
+		assertEquals(URI.create(base + "/shows.json"), fetched(open, base + "/moved").finalUri());
+		assertEquals(URI.create(base + "/shows.json"), fetched(open, base + "/relative").finalUri());
 	}
 
 	@Test
 	void followsFiveRedirectsButNotSix() throws Exception {
-		assertEquals(URI.create(base + "/shows.json"), open.fetch(URI.create(base + "/chain5")).finalUri());
+		assertEquals(URI.create(base + "/shows.json"), fetched(open, base + "/chain5").finalUri());
 		var e = assertThrows(IllegalArgumentException.class, () -> open.fetch(URI.create(base + "/chain6")));
 		assertEquals(UrlFetcher.TOO_MANY_REDIRECTS, e.getMessage());
 	}
@@ -333,31 +339,46 @@ class UrlFetcherTest {
 	}
 
 	@Test
-	void aDeclaredContentLengthOverTheCapFailsBeforeTheBodyIsRead() {
-		var e = assertThrows(IllegalArgumentException.class, () -> open.fetch(URI.create(base + "/declared-big")));
-		assertEquals(SIZE_MESSAGE, e.getMessage());
+	void aBodyCutShortOfItsContentLengthIsRecordedAsAFailure() throws Exception {
+		try (var fetched = open.fetch(URI.create(base + "/short"))) {
+			assertThrows(IOException.class, fetched.body()::readAllBytes);
+			assertNotNull(fetched.body().failure());
+			assertThrows(IOException.class, fetched.body()::requireComplete);
+		}
 	}
 
 	@Test
-	void aChunkedBodyOverTheCapFails() {
-		var e = assertThrows(IllegalArgumentException.class, () -> open.fetch(URI.create(base + "/chunked-big")));
-		assertEquals(SIZE_MESSAGE, e.getMessage());
+	void aBodyOfAnySizeStreamsThrough() throws Exception {
+		try (var fetched = open.fetch(URI.create(base + "/chunked-big"))) {
+			assertEquals(16L * 1024 * 1024, fetched.body().transferTo(OutputStream.nullOutputStream()));
+			assertDoesNotThrow(fetched.body()::requireComplete);
+		}
 	}
 
 	@Test
-	void aStalledBodyThrowsASocketTimeout() {
+	void aStalledBodyThrowsASocketTimeout() throws Exception {
 		long start = System.nanoTime();
-		assertThrows(SocketTimeoutException.class, () -> open.fetch(URI.create(base + "/stall")));
+		try (var fetched = open.fetch(URI.create(base + "/stall"))) {
+			assertThrows(SocketTimeoutException.class, fetched.body()::readAllBytes);
+		}
 		assertTrue(System.nanoTime() - start < Duration.ofSeconds(5).toNanos(), "read timeout did not fire");
 	}
 
 	@Test
 	void sendsOnlyAcceptAndUserAgentAndNeverCredentials() throws Exception {
-		open.fetch(URI.create(base + "/shows.json"));
+		open.fetch(URI.create(base + "/shows.json")).close();
 		assertEquals(List.of(UrlFetcher.USER_AGENT), lastRequestHeaders.get("User-agent"));
 		assertEquals(List.of(UrlFetcher.ACCEPT), lastRequestHeaders.get("Accept"));
 		assertNull(lastRequestHeaders.get("Authorization"));
 		assertNull(lastRequestHeaders.get("Cookie"));
+	}
+
+	/** Fetches, reads the body to its end, and releases the connection. */
+	private static UrlFetcher.FetchedBody fetched(UrlFetcher fetcher, String url) throws IOException {
+		try (var fetched = fetcher.fetch(URI.create(url))) {
+			fetched.body().transferTo(OutputStream.nullOutputStream());
+			return fetched;
+		}
 	}
 
 	private void respond(HttpExchange exchange, int status, String contentType, String body) throws IOException {

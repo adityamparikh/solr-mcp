@@ -71,7 +71,7 @@ class McpClientStdioIntegrationTest extends McpClientIntegrationTestBase {
 			var indexed = mcpClient.callTool(
 					new CallToolRequest("index-url", Map.of("collection", collection, "url", showsJsonUrl(server))));
 			assertNotError(indexed);
-			assertTrue(extractText(indexed).contains("61 of 61"), extractText(indexed));
+			assertTrue(extractText(indexed).startsWith("Solr accepted the JSON document"), extractText(indexed));
 			assertFalse(extractText(indexed).contains("Stranger Things"), "payload leaked into the summary");
 			var searched = mcpClient.callTool(
 					new CallToolRequest("search", Map.of("collection", collection, "query", "*:*", "rows", 0)));

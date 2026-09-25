@@ -9,6 +9,10 @@ CSV and XML are no longer parsed by the server but forwarded to Solr's own updat
 handlers, and the XML tool takes Solr update XML (`<add><doc><field name="...">`).
 `index-url` now indexes each format exactly as its inline tool does (D3, §4.4, §4.5);
 everything else in this spec is unchanged.
+**Amended again 2026-09-24:** the size cap (D3, `max-bytes`) is removed; JSON, CSV and
+XML now stream into Solr. See
+[`2026-09-24-streaming-and-local-file-ingestion-design.md`](2026-09-24-streaming-and-local-file-ingestion-design.md) §3,
+which supersedes this spec wherever they differ.
 
 Written for an implementer with no access to the discussions behind it. §3 lists
 every decision with its reason; §4 to §7 are the specification; §8 is the definition

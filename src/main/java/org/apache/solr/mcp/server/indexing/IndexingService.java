@@ -18,6 +18,8 @@ package org.apache.solr.mcp.server.indexing;
 
 import io.micrometer.observation.annotation.Observed;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.Charset;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -227,11 +229,7 @@ public class IndexingService {
 			@McpToolParam(
 					description = "Documents to index: a JSON array with one object per document") List<Map<String, Object>> documents)
 			throws IOException, SolrServerException {
-		return indexJson(collection, indexingDocumentCreator.createSchemalessDocumentsFromJson(documents));
-	}
-
-	private String indexJson(String collection, List<SolrInputDocument> schemalessDoc)
-			throws IOException, SolrServerException {
+		List<SolrInputDocument> schemalessDoc = indexingDocumentCreator.createSchemalessDocumentsFromJson(documents);
 		int successCount = indexDocuments(collection, schemalessDoc);
 		return "Successfully indexed " + successCount + " of " + schemalessDoc.size() + " documents into collection '"
 				+ collection + "'" + describeIndexedFields(schemalessDoc);
@@ -398,6 +396,14 @@ public class IndexingService {
 			@McpToolParam(
 					description = "Markdown string to index, optionally starting with YAML front matter") String markdown)
 			throws IOException, SolrServerException {
+		return indexMarkdown(collection, markdown);
+	}
+
+	/**
+	 * The parse-and-index behind {@code index-markdown-documents}, shared with
+	 * {@code index-url}.
+	 */
+	String indexMarkdown(String collection, String markdown) throws IOException, SolrServerException {
 		List<SolrInputDocument> schemalessDoc = indexingDocumentCreator.createSchemalessDocumentsFromMarkdown(markdown);
 		int successCount = indexDocuments(collection, schemalessDoc);
 		return "Successfully indexed " + successCount + " of " + schemalessDoc.size() + " documents into collection '"
@@ -414,31 +420,91 @@ public class IndexingService {
 			+ "existing field types cannot be changed with these tools.";
 
 	/**
-	 * Indexes a whole document set given as text, the way the inline tool for its
-	 * format does: CSV and XML go to Solr's own update handler unchanged, JSON and
-	 * Markdown are parsed by the server. Used by {@code index-url}, whose payload
-	 * arrives as text whatever its format.
+	 * Streams a JSON, CSV or XML document from {@code body} to Solr's own handler
+	 * for its format, without committing. Used by {@code index-url}, so the
+	 * document is never held in memory: SolrJ copies the stream into the request as
+	 * it is read.
+	 *
+	 * <p>
+	 * No commit is sent here because SolrJ only logs a failure to read the body and
+	 * then ends the upload early, which Solr can accept as a shorter but valid
+	 * document. The caller checks that the whole body arrived and only then calls
+	 * {@link #commitStreamed}.
+	 *
+	 * <p>
+	 * CSV goes to {@code /update} with {@code header=true}, as
+	 * {@code index-csv-documents} sends it; XML to {@code /update} after the same
+	 * {@code <add>}-only check as {@code index-xml-documents}; JSON to
+	 * {@code /update/json/docs}, which treats each object as a document (on
+	 * {@code /update}, a nested object such as {@code {"set": ...}} would be read
+	 * as an atomic-update instruction).
 	 *
 	 * @param collection
 	 *            target collection
-	 * @param payload
-	 *            the whole document set as text
 	 * @param format
-	 *            {@code json}, {@code csv}, {@code xml} or {@code markdown}
-	 * @return the summary the matching inline tool returns
+	 *            {@code json}, {@code csv} or {@code xml}
+	 * @param body
+	 *            the document as it arrives
+	 * @param charset
+	 *            the body's charset, declared to Solr
 	 * @throws IOException
 	 *             on Solr communication failure
 	 * @throws SolrServerException
 	 *             if Solr rejects the update
 	 */
-	String indexPayload(String collection, String payload, String format) throws IOException, SolrServerException {
-		return switch (format) {
-			case "json" -> indexJson(collection, indexingDocumentCreator.createSchemalessDocumentsFromJson(payload));
-			case "csv" -> indexCsvDocuments(collection, payload);
-			case "xml" -> indexXmlDocuments(collection, payload);
-			case "markdown" -> indexMarkdownDocuments(collection, payload);
-			default -> throw new IllegalArgumentException("Unsupported document format: " + format);
+	void sendUncommitted(String collection, String format, InputStream body, Charset charset)
+			throws IOException, SolrServerException {
+		InputStream content = body;
+		String path = "/update";
+		String mediaType;
+		switch (format) {
+			case "csv" -> mediaType = "text/csv";
+			case "xml" -> {
+				content = SolrUpdateXml.requireAddBlock(body);
+				mediaType = "application/xml";
+			}
+			case "json" -> {
+				path = "/update/json/docs";
+				mediaType = "application/json";
+			}
+			default -> throw new IllegalArgumentException("Unsupported streamed format: " + format);
+		}
+		ContentStreamUpdateRequest request = new ContentStreamUpdateRequest(path);
+		if ("csv".equals(format)) {
+			request.setParam("header", "true");
+		}
+		InputStream stream = content;
+		ContentStreamBase contentStream = new ContentStreamBase() {
+			@Override
+			public InputStream getStream() {
+				return stream;
+			}
 		};
+		contentStream.setContentType(mediaType + "; charset=" + charset.name());
+		request.addContentStream(contentStream);
+		request.process(solrClient, collection);
+	}
+
+	/**
+	 * Soft-commits what {@link #sendUncommitted} sent, keeping the documents
+	 * searchable the moment the tool returns, as the inline tools do.
+	 *
+	 * @param collection
+	 *            target collection
+	 * @param payload
+	 *            what was sent, for the message (e.g. {@code "CSV document"})
+	 * @param bytes
+	 *            how many bytes of it were streamed
+	 * @return Solr's acceptance; Solr's update response carries no document count
+	 * @throws IOException
+	 *             on Solr communication failure
+	 * @throws SolrServerException
+	 *             if Solr fails the commit
+	 */
+	String commitStreamed(String collection, String payload, long bytes) throws IOException, SolrServerException {
+		UpdateResponse response = solrClient.commit(collection, false, true, true);
+		return "Solr accepted the " + payload + " (" + bytes + " bytes) for collection '" + collection
+				+ "' and committed it (status " + response.getStatus() + ", " + response.getQTime() + " ms)";
 	}
 
 	/**
@@ -659,13 +725,12 @@ public class IndexingService {
 				%s
 
 				3. Index the documents.
-				   - If the data is reachable at an http(s) URL and is within the server's size limit
-				     (10 MB unless the operator changed it), prefer `index-url` with `collection` and
-				     `url`; optionally override the detected `format`. The URL is fetched by the MCP
-				     server, so it must be reachable from the server's network and its host must be on
-				     the server's allow-list (GitHub raw content by default).
-				   - If the data is larger than that limit, or is a file on the user's machine that is
-				     too large to paste, do not push it through this conversation. Give the user this
+				   - If the data is reachable at an http(s) URL, prefer `index-url` with `collection` and
+				     `url`, whatever its size; optionally override the detected `format`. The URL is
+				     fetched by the MCP server, so it must be reachable from the server's network and its
+				     host must be on the server's allow-list (GitHub raw content by default).
+				   - If the data is a file on the user's machine that is too large to paste, do not push
+				     it through this conversation. Give the user this
 				     command to run where the file is, with their collection name and Solr URL filled
 				     in, then continue with step 4:
 				     `bin/solr post -c <collection> <file>`

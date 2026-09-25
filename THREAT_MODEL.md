@@ -214,10 +214,9 @@ reaching the backend Solr directly, bypassing this server, is out of model (§3)
 | `MCP_CORS_ALLOWED_ORIGINS` | MCP Inspector localhost proxy | Explicit CORS allowlist; wildcard-with-credentials is rejected by construction (`setAllowedOrigins`, not patterns). | *(documented)* |
 | `SOLR_USERNAME` / `SOLR_PASSWORD` | unset | When both set, static HTTP Basic Auth to backend Solr on every request; when unset, unauthenticated backend calls. | Q-backendcreds |
 | `SOLR_INDEX_URL_ALLOWED_HOSTS` | `raw.githubusercontent.com,*.githubusercontent.com,github.com` | Which hosts `index-url` may fetch; exact hosts, `*.suffix` patterns, or `*`, which widens the boundary to the server's whole network (link-local and cloud-metadata addresses stay refused). | *(documented)* |
-| `SOLR_INDEX_URL_MAX_BYTES` | `10MB` | Caps one `index-url` fetch; the body is held in memory, so this bounds memory per call to a small multiple of the value (raw bytes, decoded string, and for JSON/Markdown the parsed documents). Concurrent callers multiply it. | *(documented)* |
 | `SOLR_INDEX_URL_READ_TIMEOUT` | `30s` | Bounds how long a remote endpoint can hold an `index-url` call open per read. The connect timeout (`10s`) is operational, not security-relevant. | *(documented)* |
 | `SOLR_INDEX_URL_TOTAL_TIMEOUT` | `5m` | Deadline for one whole `index-url` fetch, redirects included, so a host that drips bytes cannot outlast the per-read timeout. | *(documented)* |
-| `SOLR_INDEX_URL_MAX_CONCURRENT_FETCHES` | `4` | How many `index-url` calls may run at once; further calls fail immediately. Bounds total memory (each call holds a small multiple of `SOLR_INDEX_URL_MAX_BYTES`) and outbound connections. | *(documented)* |
+| `SOLR_INDEX_URL_MAX_CONCURRENT_FETCHES` | `4` | How many `index-url` calls may run at once; further calls fail immediately. Bounds outbound and Solr connections held by streaming fetches, and the number of Markdown documents held in memory at once. | *(documented)* |
 
 **How HTTP mode enforces auth** *(maintainer — Q-transport.)*: the transport
 is streamable HTTP running in **stateless** mode
@@ -344,10 +343,18 @@ Two adversaries are in scope; several are explicitly not.
   and the known cloud-metadata literals (`fd00:ec2::254`, `100.100.100.200`,
   `168.63.129.16`) are refused on every redirect hop regardless; other providers'
   metadata endpoints are not enumerated. The fetch carries no credentials or
-  caller headers, refuses an https→http redirect, and reads at most
-  `SOLR_INDEX_URL_MAX_BYTES` (default 10 MB); a refused or over-cap response is
-  abandoned without reading its body (the JDK may drain a small remainder in the
-  background for keep-alive). One fetch is bounded by a per-read timeout and by
+  caller headers, and refuses an https→http redirect; a refused or abandoned
+  response is closed without reading its body (the JDK may drain a small
+  remainder in the background for keep-alive). **There is no size cap.** JSON,
+  CSV and XML bodies stream into Solr through a fixed buffer, so they do not
+  grow server memory; a **Markdown** body is read whole, so an allow-listed URL
+  serving a very large Markdown file consumes that much memory per call, bounded
+  only by the concurrency limit and the timeouts. This is accepted for now
+  (maintainer decision, 2026-09-24) and may gain a limit later. A streamed body
+  is committed only after the server has read it to its end (and to its
+  declared `Content-Length`); a transfer that fails partway is reported and not
+  committed, but documents Solr had already read become durable at its next
+  `autoCommit` and visible at the next commit. One fetch is bounded by a per-read timeout and by
   a total deadline (`SOLR_INDEX_URL_TOTAL_TIMEOUT`, default 5 minutes, redirects
   included), and at most `SOLR_INDEX_URL_MAX_CONCURRENT_FETCHES` (default 4)
   fetches run at once, further calls failing immediately; response headers are
