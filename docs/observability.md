@@ -6,11 +6,14 @@ When running in **HTTP mode**, the Solr MCP Server exports telemetry data via Op
 
 | Signal | Backend | What it shows |
 |--------|---------|---------------|
-| **Traces** | Tempo | Distributed traces for every MCP tool invocation, Solr query, and HTTP request |
-| **Metrics** | Mimir/Prometheus | JVM stats, HTTP request rates, Solr query latencies, cache hit ratios |
-| **Logs** | Loki | Structured application logs correlated with trace IDs |
+| **Traces** | Tempo | A trace per HTTP request, with a span for the MCP tool it invoked |
+| **Metrics** | Mimir/Prometheus | HTTP request rate and latency, per-tool latency, JVM, Tomcat and Spring Security metrics |
+| **Logs** | Loki | Application logs, each tagged with the trace and span it was written under |
 
-Every MCP tool invocation creates a trace span: search, indexing (JSON, CSV, XML), collection operations (list, stats, health, create), and schema retrieval. All incoming HTTP requests and outgoing Solr calls are automatically traced.
+Every MCP tool invocation creates a span named after the service class and method, such as
+`SearchService#search` or `CollectionService#checkHealth`, inside the trace of the HTTP
+request that carried it. The call to Solr is not a separate span; its time is part of the
+tool span.
 
 ***
 
@@ -64,30 +67,65 @@ Open [http://localhost:3000](http://localhost:3000) and click **Explore** in the
 
         {.service.name="solr-mcp"}
 
-3. Click on a trace to see the span waterfall&mdash;each MCP tool invocation, Solr query, and HTTP request is a separate span
+3. Click on an `http post /mcp` trace to see the span waterfall: the security filter
+   chain, then one span for the tool (`SearchService#search`,
+   `CollectionService#checkHealth`, &hellip;) with its duration. Each span's **Logs for
+   this span** link opens the lines that request logged in Loki.
 
 ### View Logs (Loki) ###
 
 1. Select **Loki** as the data source
 2. Use LogQL to search:
 
-        {service_name="solr-mcp"} |= "search"
+        {service_name="solr-mcp"} | trace_id != ""
 
-3. Logs are automatically correlated with trace IDs&mdash;click a log line to jump to its trace
+   That keeps only lines written during a request; drop the filter to include startup
+   and lifecycle lines, which have no trace.
+3. Expand a line and follow its **Trace** link to open the request in Tempo.
+
+Every tool call logs one line when it finishes, written under the request's trace, so a
+tool call's **Logs for this span** link always finds at least that line:
+
+```text
+INFO  ... o.a.s.m.s.o.ToolCallLoggingHandler : SearchService#search completed in 43 ms
+WARN  ... o.a.s.m.s.o.ToolCallLoggingHandler : SearchService#search failed after 9 ms: java.lang.IllegalArgumentException
+```
+
+Any warning the tool logs itself, such as `check-health` on a missing collection, appears
+alongside it. A request that runs no tool, such as `tools/list`, logs nothing, so its link
+is empty.
 
 ### View Metrics (Prometheus) ###
 
 1. Select **Prometheus** as the data source
 2. Example queries:
 
-        # HTTP request rate
-        rate(http_server_requests_seconds_count[5m])
+        # MCP request rate, by method and status
+        sum by (method, status) (rate(http_server_requests_milliseconds_count{job="solr-mcp", uri="/mcp"}[5m]))
 
-        # JVM memory usage
-        jvm_memory_used_bytes
+        # Average MCP request latency (ms)
+        sum(rate(http_server_requests_milliseconds_sum{job="solr-mcp", uri="/mcp"}[5m]))
+          / sum(rate(http_server_requests_milliseconds_count{job="solr-mcp", uri="/mcp"}[5m]))
 
-        # Request latency (p99)
-        histogram_quantile(0.99, rate(http_server_requests_seconds_bucket[5m]))
+        # Average latency per tool (ms)
+        sum by (class, method) (rate(method_observed_milliseconds_sum{job="solr-mcp"}[5m]))
+          / sum by (class, method) (rate(method_observed_milliseconds_count{job="solr-mcp"}[5m]))
+
+        # JVM memory, heap vs non-heap
+        sum by (area) (jvm_memory_used_bytes{job="solr-mcp"})
+
+   Timers are exported over OTLP in **milliseconds**, so their names end in
+   `_milliseconds_*`; queries written for `http_server_requests_seconds_*` return nothing.
+   Metrics are exported once a minute, and a `rate()` needs two exports, so allow two
+   minutes after the first calls. A tool with no calls in the window shows `NaN`.
+
+   Timers publish only the `+Inf` bucket by default, so percentiles return `NaN`. Enable
+   buckets for HTTP requests with
+   `management.metrics.distribution.percentiles-histogram.http.server.requests=true`,
+   then:
+
+        # MCP request latency, p99 (ms)
+        histogram_quantile(0.99, sum by (le) (rate(http_server_requests_milliseconds_bucket{job="solr-mcp", uri="/mcp"}[5m])))
 
 ***
 
