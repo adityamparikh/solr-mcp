@@ -8,7 +8,7 @@ Solr MCP Server is a Spring AI Model Context Protocol (MCP) server that enables 
 
 - **Status:** Apache incubating project (v0.0.2-SNAPSHOT)
 - **Java:** 25+ (centralized in build.gradle.kts)
-- **Framework:** Spring Boot 4.1.1, Spring AI 2.0.1
+- **Framework:** Spring Boot 4.2.0-M2, Spring AI 2.1.0-M1
 - **License:** Apache 2.0
 
 ## Common Commands
@@ -132,7 +132,7 @@ Configuration files: `application-stdio.properties`, `application-http.propertie
 ### SBOM Architecture
 
 CycloneDX SBOM generation is wired by applying the `org.cyclonedx.bom` plugin,
-version **3.4.1**. Spring Boot 4.1.1's `CyclonedxPluginAction` recognises 3.x and
+version **3.4.1**. Spring Boot 4's `CyclonedxPluginAction` recognises 3.x and
 auto-configures the `cyclonedxBom` task (type `org.cyclonedx.gradle.CyclonedxAggregateTask`):
 it writes `build/reports/cyclonedx/application.cdx.json`, embeds that in the bootJar at
 `META-INF/sbom/application.cdx.json`, and sets the `Sbom-Format` / `Sbom-Location`
@@ -332,6 +332,19 @@ changed these things; keep them in mind when reading older docs or PRs:
   module (`mcp-json-jackson3`).
 - **Span naming:** `@Observed` spans use `ClassName#methodName` (PascalCase) instead of
   the earlier `class-name#method-name` (kebab-case).
+
+**Spring AI 2.1.0-M1 / Spring Boot 4.2.0-M2** ([release announcement](https://spring.io/blog/2026/09/25/spring-ai-2-1-0-M1-available-now)):
+Spring AI 2.1 moves its baseline to Spring Boot 4.2, so both are on milestones, which
+Maven Central carries and no extra repository is needed for. What that move changed here:
+
+- **MCP SDK pin kept:** Spring AI 2.1.0-M1 still depends on `mcp` 2.0.0, so `mcp-bom` 2.0.1
+  stays.
+- **OpenTelemetry alignment:** Boot 4.2.0-M2 manages `opentelemetry-api` 1.65.0, so the
+  `opentelemetry-api-incubator` pin in `build.gradle.kts` moved to `1.65.0-alpha`.
+- **ktlint:** Boot 4.2 manages Kotlin 2.4.20, and the dependency-management plugin applies it
+  to Spotless's formatter configurations too, which broke ktlint's embedded compiler. A
+  resolution rule scoped to the `spotless*` configurations restores the Kotlin version
+  ktlint requests.
 
 ## Release LICENSE / NOTICE
 

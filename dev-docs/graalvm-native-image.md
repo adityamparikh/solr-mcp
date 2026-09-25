@@ -204,14 +204,14 @@ four `--initialize-at-build-time` entries in `nativeImageBuildArgs`:
 proxy classes that cannot be build-time initialized; including it breaks the
 build.
 
-**OTel dependency alignment.** Spring Boot 4.1.0 manages the OpenTelemetry SDK
-(`opentelemetry-api:1.62.0`) through the starter, but the logback appender
+**OTel dependency alignment.** Spring Boot 4.2.0-M2 manages the OpenTelemetry SDK
+(`opentelemetry-api:1.65.0`) through the starter, but the logback appender
 (`opentelemetry-instrumentation 2.21.0-alpha`) transitively pins
 `opentelemetry-api-incubator` to `1.55.0-alpha`, which lacks
 `DeclarativeConfigProperties.get(String)` used by SB4's `OpenTelemetrySdk`
 autoconfiguration — a `NoSuchMethodError` at context startup. A
 `resolutionStrategy` in `build.gradle.kts` forces `opentelemetry-api-incubator`
-to `1.62.0-alpha` to match, and pins `opentelemetry-proto` to `1.3.2-alpha`
+to `1.65.0-alpha` to match, and pins `opentelemetry-proto` to `1.3.2-alpha`
 (the `1.8.0-alpha` line is incompatible with protobuf 3.x). The OTLP exporter is
 only wired in the `http` profile, so the `stdio` native image never exercises
 its reflection surface anyway.

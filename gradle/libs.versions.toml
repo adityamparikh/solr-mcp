@@ -16,7 +16,7 @@
 #
 [versions]
 # Build plugins
-spring-boot = "4.1.1"
+spring-boot = "4.2.0-M2"
 spring-dependency-management = "1.1.7"
 errorprone-plugin = "5.1.0"
 jib = "3.5.3"
@@ -25,10 +25,10 @@ graalvm-native = "0.10.6"
 cyclonedx-plugin = "3.4.1"
 
 # Main dependencies
-spring-ai = "2.0.1"
+spring-ai = "2.1.0-M1"
 solr = "10.0.0"
 mcp-server-security = "0.1.14"
-# MCP Java SDK. Spring AI 2.0.1 pulls 2.0.0 transitively; 2.0.1 fixes error
+# MCP Java SDK. Spring AI 2.1.0-M1 still pulls 2.0.0 transitively; 2.0.1 fixes error
 # handling when a handler is not registered on a stateless server (our HTTP
 # profile), empty-completion handling for unmatched refs, and adds bounded
 # reads on the HTTP and STDIO transports. Drop this pin once a Spring AI
@@ -77,7 +77,7 @@ spring-ai-autoconfigure-mcp-client-common = { module = "org.springframework.ai:s
 spring-ai-spring-boot-docker-compose = { module = "org.springframework.ai:spring-ai-spring-boot-docker-compose" }
 spring-ai-spring-boot-testcontainers = { module = "org.springframework.ai:spring-ai-spring-boot-testcontainers" }
 
-# MCP Java SDK (pinned ahead of what Spring AI 2.0.1 resolves; see [versions])
+# MCP Java SDK (pinned ahead of what Spring AI 2.1.0-M1 resolves; see [versions])
 mcp-bom = { module = "io.modelcontextprotocol.sdk:mcp-bom", version.ref = "mcp-sdk" }
 
 # MCP Security
