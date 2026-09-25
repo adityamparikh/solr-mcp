@@ -30,7 +30,7 @@ launches the container on demand, once per session. There the JVM's costs
 dominate — cold-start warm-up on every session, a large idle RSS for a Spring
 Boot + Spring AI + SolrJ process, and a hundreds-of-MB image carrying a JRE
 layer. A native image trades build-time complexity for sub-second startup,
-much lower RSS, and a smaller self-contained image. Spring AI 1.1's first-class
+much lower RSS, and a smaller self-contained image. Spring AI's first-class
 AOT support is what makes this tractable here.
 
 The JVM image is **not** going away — it remains the default and the only multi-arch-from-one-build artifact. Native is an alternative, not a replacement.
