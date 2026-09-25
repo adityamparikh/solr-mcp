@@ -670,6 +670,11 @@ independent housekeeping that can be its own PR at any time.
 
 ## 10. Phase 2 (not in this PR): unlimited size by proxying to Solr
 
+*Superseded 2026-09-24 by
+[`2026-09-24-streaming-and-local-file-ingestion-design.md`](2026-09-24-streaming-and-local-file-ingestion-design.md),
+which specifies the streaming design and the approach for files on the user's machine.
+The text below is kept for the record.*
+
 *Amended 2026-09-24:* the forwarding half of this is now in place, because
 `indexPayload` routes CSV and XML through the inline tools, which forward to Solr's
 `/update`. What remains is streaming the fetched body into that request instead of
