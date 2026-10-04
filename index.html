@@ -612,6 +612,7 @@ details.panel > summary .hint {
         <div class="seg" data-group="client">
           <button type="button" data-val="claude-code" aria-pressed="true">Claude Code</button>
           <button type="button" data-val="codex" aria-pressed="false">Codex</button>
+          <button type="button" data-val="chatgpt" aria-pressed="false">ChatGPT</button>
           <button type="button" data-val="claude-desktop" aria-pressed="false">Claude Desktop</button>
           <button type="button" data-val="copilot" aria-pressed="false">VS Code / Copilot</button>
           <button type="button" data-val="cursor" aria-pressed="false">Cursor</button>
@@ -859,6 +860,42 @@ java -jar C:/path/to/solr-mcp-1.0.0-SNAPSHOT.jar</code></pre></div>
         unsecured server. Verify with <code class="inline">codex mcp list</code>; the server must
         already be running when Codex starts.
       </p>
+      </div>
+    </div>
+
+    <!-- ── ChatGPT ── -->
+    <div data-client="chatgpt">
+      <h3>ChatGPT</h3>
+      <div data-transport="stdio" class="note warn">
+        <span class="tag">HTTP only</span>
+        <p>
+          ChatGPT connects to a <em>remote</em> MCP server; it cannot launch a local process, so
+          there is no STDIO setup. Switch <b>Transport</b> to <b>HTTP</b> above.
+        </p>
+      </div>
+      <div data-transport="http">
+        <div class="note warn">
+          <span class="tag">Needs a public HTTPS URL</span>
+          <p>
+            <code class="inline">localhost</code> is unreachable from ChatGPT. Put a tunnel in front of
+            the server you started above, for example
+            <code class="inline">ngrok http 8080</code>, and use the <code class="inline">https://…</code>
+            address it prints with <code class="inline">/mcp</code> appended. Because security is off on
+            this server, <b>anyone with that URL can read and change your Solr</b> — demo against a
+            throwaway Solr and stop the tunnel afterwards. ChatGPT supports OAuth 2.1 or no auth only,
+            and this server's secured mode is not compatible yet, so there is no secured variant.
+          </p>
+        </div>
+        <ol style="font-size:.92rem;color:var(--ink-2);line-height:1.6">
+          <li><b>Settings → Security and login</b>: turn on <b>Developer mode</b> (Pro, Plus, Business, Enterprise, Education; workspace admins may need to allow it).</li>
+          <li>Open <b>ChatGPT Plugins</b>, press <b>+</b>, and create a developer-mode app.</li>
+          <li>Name it <code class="inline">solr-mcp</code>; under <b>Connection</b> enter <code class="inline">https://&lt;your-tunnel&gt;/mcp</code>; choose <b>No authentication</b>.</li>
+          <li>Create it and check the discovered tools — there should be twelve. Enable the app in a chat.</li>
+        </ol>
+        <p style="font-size:.86rem;color:var(--ink-2)">
+          ChatGPT asks before running tools it treats as writes, which is most of them. After
+          restarting the server, press <b>Refresh</b> on the app.
+        </p>
       </div>
     </div>
 
@@ -2537,6 +2574,15 @@ codex exec "Call the list-collections tool on the solr-mcp MCP server and reply 
           <p style="font-size:.86rem;color:var(--ink-2)">
             The token expires after about five minutes; restart Codex after refreshing it so it re-reads the variable.
           </p>
+        </div>
+
+        <!-- ── ChatGPT ── -->
+        <div data-client="chatgpt">
+          <h4>ChatGPT</h4>
+          <div class="note warn">
+            <span class="tag">Not supported</span>
+            <p>ChatGPT supports OAuth 2.1 or no authentication — not a static bearer token — and it has no way to start a login against this server's secured mode, which never answers an anonymous request with 401. Use another client for this step.</p>
+          </div>
         </div>
 
         <!-- ── Claude Desktop ── -->
