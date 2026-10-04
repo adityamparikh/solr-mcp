@@ -20,6 +20,7 @@ import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.ListProperty
+import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.OutputFile
@@ -28,9 +29,10 @@ import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 
 /**
- * Generates the dependency/license list for the Incubator IP-clearance / release-checklist
- * item "all items depended upon by the project are covered by approved licenses", as an
- * HTML `<td>` fragment ready to paste into the checklist.
+ * Generates the dependency/license row for the Incubator IP-clearance status document
+ * (`<project>-ip-clearance.xml`, the "Check and make sure that all items depended upon by
+ * the project are covered by ... approved licenses" row of its "Verify distribution rights"
+ * table), as an XML `<tr>` fragment ready to paste into that table.
  *
  * It is derived from the same inputs as the binary LICENSE ([GenerateBinaryLicense]): the
  * shipped dependency coordinates and the CycloneDX SBOM, so the two cannot drift. Each
@@ -52,7 +54,11 @@ abstract class GenerateIpClearanceLicenseReport : DefaultTask() {
     @get:Input
     abstract val bundledCoordinates: ListProperty<String>
 
-    /** Where the HTML fragment is written. */
+    /** Completion date shown in the row's first column (`YYYY-MM-dd`). */
+    @get:Input
+    abstract val date: Property<String>
+
+    /** Where the XML fragment is written. */
     @get:OutputFile
     abstract val outputFile: RegularFileProperty
 
@@ -74,23 +80,27 @@ abstract class GenerateIpClearanceLicenseReport : DefaultTask() {
             )
         }
 
-        val html = StringBuilder()
-        html.append("<td>Check and make sure that all items depended upon by the project are\n")
-        html.append("    covered by one or more of the following approved licenses: Apache, BSD,\n")
-        html.append("    Artistic, MIT/X, MIT/W3C, MPL 1.1, or something with essentially the same\n")
-        html.append("    terms. &mdash; All runtime dependencies bundled in the release (derived from\n")
-        html.append("    the CycloneDX SBOM):\n")
-        html.append("  <ul>\n")
+        val xml = StringBuilder()
+        xml.append("            <tr>\n")
+        xml.append("              <td>").append(date.get()).append("</td>\n")
+        xml.append("              <td>Check and make sure that all items depended upon by the project are\n")
+        xml.append("                  covered by one or more of the following approved licenses: Apache,\n")
+        xml.append("                  BSD, Artistic, MIT/X, MIT/W3C, MPL 1.1, or something with\n")
+        xml.append("                  essentially the same terms. \u2014 All runtime dependencies bundled in the\n")
+        xml.append("                  release (derived from the CycloneDX SBOM, as reported there; the full list\n")
+        xml.append("                  is also in <code>META-INF/LICENSE</code> of the executable JAR):\n")
+        xml.append("                  <ul>\n")
         for ((groupArtifact, licenses) in items.distinctBy { it.first }.sortedBy { it.first }) {
-            html.append("    <li>").append(escape(groupArtifact)).append(" &mdash; ")
+            xml.append("                    <li>").append(escape(groupArtifact)).append(" \u2014 ")
                 .append(escape(licenses.joinToString(" / ") { it.label })).append("</li>\n")
         }
-        html.append("  </ul>\n")
-        html.append("</td>\n")
+        xml.append("                  </ul>\n")
+        xml.append("              </td>\n")
+        xml.append("            </tr>\n")
 
         val out = outputFile.get().asFile
         out.parentFile.mkdirs()
-        out.writeText(html.toString())
+        out.writeText(xml.toString())
     }
 
     private fun escape(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")

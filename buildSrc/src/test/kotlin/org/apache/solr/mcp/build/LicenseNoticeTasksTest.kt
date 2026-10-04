@@ -151,18 +151,22 @@ class LicenseNoticeTasksTest {
         task.bundledCoordinates.set(
             listOf("x:gpl-lib:1", "org.apache.solr:solr-solrj:10.0.0", "ch.qos.logback:logback-classic:1.5.0"),
         )
-        val out = File(tempDir, "out/ip.html")
+        task.date.set("2026-10-04")
+        val out = File(tempDir, "out/ip.xml")
         task.outputFile.set(out)
 
         task.generate()
 
-        val html = out.readText()
-        assertTrue(html.startsWith("<td>") && html.trimEnd().endsWith("</td>"))
-        assertTrue(html.contains("<li>org.apache.solr:solr-solrj &mdash; Apache-2.0</li>"))
-        assertTrue(html.contains("<li>ch.qos.logback:logback-classic &mdash; EPL-1.0 / LGPL-2.1-only</li>"))
-        assertTrue(html.contains("<li>x:gpl-lib &mdash; GPL-3.0-only</li>"), "licenses are reported, not filtered")
-        assertFalse(html.contains("Category"), "no A/B judgement is made")
-        assertTrue(html.indexOf("ch.qos.logback") < html.indexOf("org.apache.solr"), "entries are sorted")
+        val xml = out.readText()
+        assertTrue(xml.trimStart().startsWith("<tr>") && xml.trimEnd().endsWith("</tr>"))
+        assertTrue(xml.contains("<td>2026-10-04</td>"), "completion date column")
+        assertTrue(xml.contains("<li>org.apache.solr:solr-solrj \u2014 Apache-2.0</li>"))
+        assertTrue(xml.contains("<li>ch.qos.logback:logback-classic \u2014 EPL-1.0 / LGPL-2.1-only</li>"))
+        assertTrue(xml.contains("<li>x:gpl-lib \u2014 GPL-3.0-only</li>"), "licenses are reported, not filtered")
+        assertFalse(xml.contains("Category"), "no A/B judgement is made")
+        assertTrue(xml.indexOf("ch.qos.logback") < xml.indexOf("org.apache.solr"), "entries are sorted")
+        javax.xml.parsers.DocumentBuilderFactory.newInstance().newDocumentBuilder()
+            .parse(org.xml.sax.InputSource(java.io.StringReader(xml)))
     }
 
     @Test
@@ -170,7 +174,8 @@ class LicenseNoticeTasksTest {
         val task = project().tasks.create("ipReport", GenerateIpClearanceLicenseReport::class.java)
         write("sbom.json", """{"components":[]}""").let(task.sbom::set)
         task.bundledCoordinates.set(listOf("missing:dep:1.0"))
-        task.outputFile.set(File(tempDir, "out/ip.html"))
+        task.date.set("2026-10-04")
+        task.outputFile.set(File(tempDir, "out/ip.xml"))
 
         val ex = assertThrows(GradleException::class.java) { task.generate() }
         assertTrue(ex.message!!.contains("missing:dep:1.0"))

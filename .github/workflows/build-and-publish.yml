@@ -144,6 +144,20 @@ jobs:
                     path: build/reports/application.cdx.json
                     retention-days: 30
 
+            # Generate every license document (binary LICENSE and NOTICE, plus the
+            # IP-clearance dependency row) into build/generated/license/. The LICENSE and
+            # NOTICE are already built by `build` above, so this only adds the
+            # IP-clearance row. Retained for 30 days alongside the SBOM they derive from.
+            -   name: Generate license documents
+                run: ./gradlew generateLicenseDocs
+
+            -   name: Upload license documents
+                uses: actions/upload-artifact@v4
+                with:
+                    name: solr-mcp-license-docs
+                    path: build/generated/license/
+                    retention-days: 30
+
             # Upload JUnit test results
             # if: always() ensures this runs even if the build fails
             # This allows viewing test results for failed builds

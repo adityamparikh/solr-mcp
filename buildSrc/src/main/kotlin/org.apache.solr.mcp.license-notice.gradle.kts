@@ -111,18 +111,28 @@ val generateBinaryNotice =
         outputFile.set(layout.buildDirectory.file("generated/license/NOTICE"))
     }
 
-// The dependency/license list for the Incubator IP-clearance / release-checklist item ("all
-// dependencies are under approved licenses") as a paste-ready HTML <td>, derived from the
-// same SBOM and shipped classpath as the binary LICENSE. A disclosure, not a gate or policy.
-// Not wired into `check`; run `./gradlew generateIpClearanceLicenseReport` when preparing
-// the checklist. Output: build/generated/license/ip-clearance-licenses.html
-tasks.register<GenerateIpClearanceLicenseReport>("generateIpClearanceLicenseReport") {
-    description = "Renders the IP-clearance 'approved licenses' dependency list (HTML) from the SBOM."
+// The dependency/license row of the Incubator IP-clearance status document, as a paste-ready
+// XML <tr>, derived from the same SBOM and shipped classpath as the binary LICENSE. A
+// disclosure, not a gate or policy. Output: build/generated/license/ip-clearance-licenses.xml
+val generateIpClearanceLicenseReport =
+    tasks.register<GenerateIpClearanceLicenseReport>("generateIpClearanceLicenseReport") {
+        description = "Renders the IP-clearance 'approved licenses' dependency row (XML) from the SBOM."
+        group = "documentation"
+        dependsOn("cyclonedxBom")
+        sbom.set(layout.buildDirectory.file("reports/application.cdx.json"))
+        bundledCoordinates.set(shippedCoordinates)
+        date.set(java.time.LocalDate.now().toString())
+        outputFile.set(layout.buildDirectory.file("generated/license/ip-clearance-licenses.xml"))
+    }
+
+// One entry point for everything license-related: binary LICENSE, binary NOTICE and the
+// IP-clearance row all land in build/generated/license/ (the SBOM they derive from is
+// build/reports/application.cdx.json). CI runs this after `build` and uploads the directory.
+// Not part of `check`: only the LICENSE task gates the build.
+tasks.register("generateLicenseDocs") {
+    description = "Generates all license documents: binary LICENSE, binary NOTICE, IP-clearance row."
     group = "documentation"
-    dependsOn("cyclonedxBom")
-    sbom.set(layout.buildDirectory.file("reports/application.cdx.json"))
-    bundledCoordinates.set(shippedCoordinates)
-    outputFile.set(layout.buildDirectory.file("generated/license/ip-clearance-licenses.html"))
+    dependsOn(generateBinaryLicense, generateBinaryNotice, generateIpClearanceLicenseReport)
 }
 
 // `metaInf { from(file) }` adds files to a jar's `META-INF/` directory. The source-form
