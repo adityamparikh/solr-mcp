@@ -40,6 +40,7 @@
 
 import org.apache.solr.mcp.build.GenerateBinaryLicense
 import org.apache.solr.mcp.build.GenerateBinaryNotice
+import org.apache.solr.mcp.build.GenerateIpClearanceLicenseReport
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier
 
 // The project's source-form LICENSE/NOTICE at the repo root (the plain Apache-2.0 text
@@ -109,6 +110,20 @@ val generateBinaryNotice =
         baseNotice.set(noticeFile)
         outputFile.set(layout.buildDirectory.file("generated/license/NOTICE"))
     }
+
+// The dependency/license list for the Incubator IP-clearance / release-checklist item ("all
+// dependencies are under approved licenses") as a paste-ready HTML <td>, derived from the
+// same SBOM and shipped classpath as the binary LICENSE. A disclosure, not a gate or policy.
+// Not wired into `check`; run `./gradlew generateIpClearanceLicenseReport` when preparing
+// the checklist. Output: build/generated/license/ip-clearance-licenses.html
+tasks.register<GenerateIpClearanceLicenseReport>("generateIpClearanceLicenseReport") {
+    description = "Renders the IP-clearance 'approved licenses' dependency list (HTML) from the SBOM."
+    group = "documentation"
+    dependsOn("cyclonedxBom")
+    sbom.set(layout.buildDirectory.file("reports/application.cdx.json"))
+    bundledCoordinates.set(shippedCoordinates)
+    outputFile.set(layout.buildDirectory.file("generated/license/ip-clearance-licenses.html"))
+}
 
 // `metaInf { from(file) }` adds files to a jar's `META-INF/` directory. The source-form
 // artifacts — the thin `jar`, `-sources`, `-javadoc` (everything except `bootJar`) — get

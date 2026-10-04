@@ -318,6 +318,13 @@ See [infra.apache.org/licensing-howto](https://infra.apache.org/licensing-howto.
   can never be silently omitted from the LICENSE. It makes no judgement about which
   licenses are acceptable. (Unlike apache/solr's `solr/licenses/` folder, which JanHoy
   said not to replicate, there is no per-dependency license/checksum store here.)
+- **IP-clearance / release-checklist list:** `./gradlew generateIpClearanceLicenseReport`
+  renders the dependency/license list for the "all dependencies are under approved licenses"
+  checklist item as a paste-ready HTML `<td>` at
+  `build/generated/license/ip-clearance-licenses.html`. It uses the same SBOM and shipped
+  classpath as `generateBinaryLicense` and lists each dependency with its SBOM license
+  verbatim. Like the LICENSE appendix it applies no allow-list and makes no Category A/B
+  judgement; that sign-off is a human review. Not part of `check`.
 - This builds on the SBOM generation (see **SBOM Architecture**); the SBOM remains the
   machine-readable bill of materials, and LICENSE/NOTICE are the human-readable legal
   artifacts derived from it.

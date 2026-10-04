@@ -135,6 +135,47 @@ class LicenseNoticeTasksTest {
         assertFalse(text.contains("NOTICES FROM BUNDLED"), "no section header when there are no lifted notices")
     }
 
+    // ---- GenerateIpClearanceLicenseReport -----------------------------------------
+
+    @Test
+    fun `ip clearance report lists each dependency with its SBOM licenses verbatim and makes no judgement`() {
+        val task = project().tasks.create("ipReport", GenerateIpClearanceLicenseReport::class.java)
+        write(
+            "sbom.json",
+            """{"components":[
+               {"group":"org.apache.solr","name":"solr-solrj","version":"10.0.0","licenses":[{"license":{"id":"Apache-2.0"}}]},
+               {"group":"ch.qos.logback","name":"logback-classic","version":"1.5.0",
+                "licenses":[{"license":{"id":"EPL-1.0"}},{"license":{"id":"LGPL-2.1-only"}}]},
+               {"group":"x","name":"gpl-lib","version":"1","licenses":[{"license":{"id":"GPL-3.0-only"}}]}]}""",
+        ).let(task.sbom::set)
+        task.bundledCoordinates.set(
+            listOf("x:gpl-lib:1", "org.apache.solr:solr-solrj:10.0.0", "ch.qos.logback:logback-classic:1.5.0"),
+        )
+        val out = File(tempDir, "out/ip.html")
+        task.outputFile.set(out)
+
+        task.generate()
+
+        val html = out.readText()
+        assertTrue(html.startsWith("<td>") && html.trimEnd().endsWith("</td>"))
+        assertTrue(html.contains("<li>org.apache.solr:solr-solrj &mdash; Apache-2.0</li>"))
+        assertTrue(html.contains("<li>ch.qos.logback:logback-classic &mdash; EPL-1.0 / LGPL-2.1-only</li>"))
+        assertTrue(html.contains("<li>x:gpl-lib &mdash; GPL-3.0-only</li>"), "licenses are reported, not filtered")
+        assertFalse(html.contains("Category"), "no A/B judgement is made")
+        assertTrue(html.indexOf("ch.qos.logback") < html.indexOf("org.apache.solr"), "entries are sorted")
+    }
+
+    @Test
+    fun `ip clearance report fails when a bundled dependency is absent from the SBOM`() {
+        val task = project().tasks.create("ipReport", GenerateIpClearanceLicenseReport::class.java)
+        write("sbom.json", """{"components":[]}""").let(task.sbom::set)
+        task.bundledCoordinates.set(listOf("missing:dep:1.0"))
+        task.outputFile.set(File(tempDir, "out/ip.html"))
+
+        val ex = assertThrows(GradleException::class.java) { task.generate() }
+        assertTrue(ex.message!!.contains("missing:dep:1.0"))
+    }
+
     // ---- helpers ------------------------------------------------------------------
 
     private fun project() = ProjectBuilder.builder().withProjectDir(tempDir).build()
