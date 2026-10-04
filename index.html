@@ -611,6 +611,7 @@ details.panel > summary .hint {
         <span class="picker-label">Client</span>
         <div class="seg" data-group="client">
           <button type="button" data-val="claude-code" aria-pressed="true">Claude Code</button>
+          <button type="button" data-val="codex" aria-pressed="false">Codex</button>
           <button type="button" data-val="claude-desktop" aria-pressed="false">Claude Desktop</button>
           <button type="button" data-val="copilot" aria-pressed="false">VS Code / Copilot</button>
           <button type="button" data-val="cursor" aria-pressed="false">Cursor</button>
@@ -821,6 +822,42 @@ java -jar C:/path/to/solr-mcp-1.0.0-SNAPSHOT.jar</code></pre></div>
       <p style="font-size:.86rem;color:var(--ink-2)">
         Verify with <code class="inline">claude mcp list</code>; the server must already be running
         or the entry shows as failed.
+      </p>
+      </div>
+    </div>
+
+    <!-- ── Codex ── -->
+    <div data-client="codex">
+      <h3>Codex</h3>
+      <div data-transport="stdio">
+      <div class="codeblock" data-runtime="docker"><button class="copy" type="button">Copy</button><pre><code>codex mcp add solr-mcp -- docker run -i --rm \
+  --add-host=host.docker.internal:host-gateway \
+  -e SOLR_URL=http://host.docker.internal:8983/solr/ \
+  ghcr.io/adityamparikh/solr-mcp:coc2026</code></pre></div>
+      <div class="codeblock" data-runtime="jar"><button class="copy" type="button">Copy</button><pre><code>codex mcp add solr-mcp \
+  --env SOLR_URL=http://localhost:8983/solr/ \
+  -- java -jar /absolute/path/to/solr-mcp-1.0.0-SNAPSHOT.jar</code></pre></div>
+      <p style="font-size:.86rem;color:var(--ink-2)">
+        The <code class="inline">--</code> separates Codex's flags from the server's launch
+        command. This writes a <code class="inline">[mcp_servers.solr-mcp]</code> table to
+        <code class="inline">~/.codex/config.toml</code>, which you can also edit by hand.
+        Verify with <code class="inline">codex mcp list</code>, or <code class="inline">/mcp</code>
+        inside a Codex session.
+      </p>
+      <p style="font-size:.86rem;color:var(--ink-2)" data-runtime="docker">
+        Codex gives a server about 10 seconds to start. A cold <code class="inline">docker run</code>
+        that has to pull the image will miss that — run
+        <code class="inline">docker pull ghcr.io/adityamparikh/solr-mcp:coc2026</code> once first, or add
+        <code class="inline">startup_timeout_sec = 60</code> to the
+        <code class="inline">[mcp_servers.solr-mcp]</code> table.
+      </p>
+      </div>
+      <div data-transport="http">
+      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>codex mcp add solr-mcp --url http://localhost:8080/mcp</code></pre></div>
+      <p style="font-size:.86rem;color:var(--ink-2)">
+        Codex prints <q>may or may not require login</q> — ignore it, there is no login on an
+        unsecured server. Verify with <code class="inline">codex mcp list</code>; the server must
+        already be running when Codex starts.
       </p>
       </div>
     </div>
@@ -1196,12 +1233,12 @@ java -jar C:/path/to/solr-mcp-1.0.0-SNAPSHOT.jar</code></pre></div>
 
     <h3>Get the data in</h3>
     <p>
-      Pick whichever suits your client. File-aware clients (Claude Code, Cursor, Copilot,
+      Pick whichever suits your client. File-aware clients (Claude Code, Codex, Cursor, Copilot,
       Zed, IntelliJ) can read a downloaded file; chat-only clients want a paste.
     </p>
 
     <details class="panel">
-      <summary>Option A — 61 shows from a file <span class="hint">Claude Code, Cursor, Copilot, Zed, IntelliJ</span></summary>
+      <summary>Option A — 61 shows from a file <span class="hint">Claude Code, Codex, Cursor, Copilot, Zed, IntelliJ</span></summary>
       <div class="panel-body">
         <div data-format="json">
           <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>curl -O https://raw.githubusercontent.com/apache/solr-mcp/main/src/test/resources/shows.json</code></pre></div>
@@ -2089,13 +2126,109 @@ cd solr-mcp
         Produces <code class="inline">solr-mcp:latest</code> locally. Substitute that for the
         <code class="inline">ghcr.io/…</code> reference in any config above.
       </p>
-      <h3>Native binaries (fast startup, small image)</h3>
-      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code><span class="tok-c"># requires GraalVM JDK 25</span>
-./gradlew bootBuildImage -Pnative                    <span class="tok-c"># solr-mcp:latest-native-stdio</span>
-./gradlew bootBuildImage -Pnative -Pprofile=http     <span class="tok-c"># solr-mcp:latest-native-http</span></code></pre></div>
       <p style="font-size:.86rem;color:var(--ink-2)">
-        Native images are pinned to one transport at build time — Spring AOT bakes the
-        web-application type into the binary — so there's one image per profile.
+        Want faster startup and a smaller image? See <a href="#build-native">Native builds and
+        every way to run it</a> below.
+      </p>
+    </div>
+  </details>
+
+  <details class="panel" id="build-native">
+    <summary>Native builds and every way to run it <span class="hint">jar · native binary · Docker × stdio · http</span></summary>
+    <div class="panel-body">
+      <p>
+        Six ways to run the server, from one checkout. Each row is a build command and a run
+        command; <b>stdio</b> is launched by your client, <b>http</b> is a process you start
+        yourself (<a href="#s2">step 2</a>). Everything here uses the clone from
+        <a href="#build-local">Build it yourself</a>, with Solr from step 1 running.
+      </p>
+      <table>
+        <thead><tr><th>Form</th><th>stdio</th><th>http</th><th>Needs</th></tr></thead>
+        <tbody>
+          <tr><td>JVM jar</td><td><a href="#bn-jar">one build, both</a></td><td><a href="#bn-jar">same jar</a></td><td>JDK 25</td></tr>
+          <tr><td>JVM Docker image (Jib)</td><td><a href="#bn-docker">one image, both</a></td><td><a href="#bn-docker">same image</a></td><td>JDK 25, Docker</td></tr>
+          <tr><td>Native binary</td><td><a href="#bn-bin">build with stdio</a></td><td><a href="#bn-bin">build with http</a></td><td>GraalVM JDK 25</td></tr>
+          <tr><td>Native Docker image</td><td><a href="#bn-ndocker">…-native-stdio</a></td><td><a href="#bn-ndocker">…-native-http</a></td><td>Docker only</td></tr>
+        </tbody>
+      </table>
+      <p style="font-size:.86rem;color:var(--ink-2)">
+        The JVM forms are dual-mode: the <code class="inline">PROFILES</code> environment variable
+        picks the transport at run time. Native forms are <b>pinned to one transport at build
+        time</b> — Spring AOT bakes the web-application type into the binary — so you build one
+        per transport. In the commands below, <code class="inline">SOLR_URL</code> points at the
+        Solr from step 1.
+      </p>
+
+      <h3 id="bn-jar">JVM jar</h3>
+      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>./gradlew build                                  <span class="tok-c"># build/libs/solr-mcp-1.0.0-SNAPSHOT.jar</span>
+
+<span class="tok-c"># stdio: your client runs this</span>
+SOLR_URL=http://localhost:8983/solr/ \
+  java -jar /absolute/path/to/solr-mcp-1.0.0-SNAPSHOT.jar
+
+<span class="tok-c"># http: you run this</span>
+PROFILES=http HTTP_SECURITY_ENABLED=false SOLR_URL=http://localhost:8983/solr/ \
+  java -jar /absolute/path/to/solr-mcp-1.0.0-SNAPSHOT.jar</code></pre></div>
+
+      <h3 id="bn-docker">JVM Docker image (Jib)</h3>
+      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code>./gradlew jibDockerBuild                         <span class="tok-c"># solr-mcp:latest</span>
+
+<span class="tok-c"># stdio: your client runs this (-i keeps stdin open)</span>
+docker run -i --rm --add-host=host.docker.internal:host-gateway \
+  -e SOLR_URL=http://host.docker.internal:8983/solr/ \
+  solr-mcp:latest
+
+<span class="tok-c"># http</span>
+docker run -p 8080:8080 --rm --add-host=host.docker.internal:host-gateway \
+  -e PROFILES=http -e HTTP_SECURITY_ENABLED=false \
+  -e SOLR_URL=http://host.docker.internal:8983/solr/ \
+  solr-mcp:latest</code></pre></div>
+
+      <h3 id="bn-bin">Native binary (host OS only)</h3>
+      <p>
+        Needs GraalVM JDK 25 on <code class="inline">JAVA_HOME</code>. The first compile takes
+        several minutes. The binary only runs on the OS and CPU you built it on.
+      </p>
+      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code><span class="tok-c"># stdio</span>
+./gradlew nativeCompile -Pnative
+SOLR_URL=http://localhost:8983/solr/ build/native/nativeCompile/solr-mcp
+
+<span class="tok-c"># http (a separate build: the transport is baked in)</span>
+./gradlew nativeCompile -Pnative -Pprofile=http
+PROFILES=http HTTP_SECURITY_ENABLED=false SOLR_URL=http://localhost:8983/solr/ \
+  build/native/nativeCompile/solr-mcp</code></pre></div>
+
+      <h3 id="bn-ndocker">Native Docker image</h3>
+      <p>
+        Built inside a Linux builder container, so it works on macOS, Linux and Windows without
+        installing GraalVM. Needs Docker and a few minutes.
+      </p>
+      <div class="codeblock"><button class="copy" type="button">Copy</button><pre><code><span class="tok-c"># stdio</span>
+./gradlew bootBuildImage -Pnative                <span class="tok-c"># solr-mcp:latest-native-stdio</span>
+docker run -i --rm --add-host=host.docker.internal:host-gateway \
+  -e SOLR_URL=http://host.docker.internal:8983/solr/ \
+  solr-mcp:latest-native-stdio
+
+<span class="tok-c"># http</span>
+./gradlew bootBuildImage -Pnative -Pprofile=http <span class="tok-c"># solr-mcp:latest-native-http</span>
+docker run -p 8080:8080 --rm --add-host=host.docker.internal:host-gateway \
+  -e PROFILES=http -e HTTP_SECURITY_ENABLED=false \
+  -e SOLR_URL=http://host.docker.internal:8983/solr/ \
+  solr-mcp:latest-native-http</code></pre></div>
+      <div class="note warn">
+        <span class="tag">Mixing them up fails quietly</span>
+        <p>
+          The <code class="inline">-native-stdio</code> image has no web server in it, and the
+          <code class="inline">-native-http</code> image has no stdio transport. Pointing a client
+          at the wrong one gives a timeout, not a helpful error.
+        </p>
+      </div>
+      <p style="font-size:.86rem;color:var(--ink-2)">
+        To use any of these with a client, take the matching config from
+        <a href="#s2">step 2</a> and swap in the image tag or binary path. Use
+        <code class="inline">solr-mcp:latest</code> where it says
+        <code class="inline">ghcr.io/…</code>, or the binary's absolute path where it says
+        <em>JAR</em>.
       </p>
     </div>
   </details>
@@ -2380,6 +2513,30 @@ claude mcp add --transport http solr-mcp http://localhost:8080/mcp `
 claude mcp list      <span class="tok-c"># ✔ Connected — true with or without the header, so also run:</span>
 claude -p "Call the list-collections tool on the solr-mcp MCP server and reply with its raw result"
 <span class="tok-c"># ["shows-auto", ...]   ← the proof. "Access Denied" here means the header did not reach the server.</span></code></pre></div>
+        </div>
+
+        <!-- ── Codex ── -->
+        <div data-client="codex">
+          <h4>Codex</h4>
+          <p style="font-size:.86rem;color:var(--ink-2)">
+            Codex reads the token from an environment variable you name, so the token never lands in
+            <code class="inline">config.toml</code>. Export it in the shell that launches Codex; re-running
+            <code class="inline">codex mcp add</code> replaces an earlier unsecured entry.
+          </p>
+          <div class="codeblock" data-os="macos linux wsl"><button class="copy" type="button">Copy</button><pre><code>export SOLR_MCP_TOKEN="$TOKEN"
+codex mcp add solr-mcp --url http://localhost:8080/mcp --bearer-token-env-var SOLR_MCP_TOKEN
+codex mcp list       # Auth: Bearer token — true with or without a valid token, so also run:
+codex exec "Call the list-collections tool on the solr-mcp MCP server and reply with its raw result"
+# ["shows-auto", ...]   ← the proof. "Access Denied" here means the token did not reach the server.</code></pre></div>
+          <div class="codeblock" data-os="windows"><button class="copy" type="button">Copy</button><pre><code><span class="tok-c"># PowerShell</span>
+$env:SOLR_MCP_TOKEN = $TOKEN
+codex mcp add solr-mcp --url http://localhost:8080/mcp --bearer-token-env-var SOLR_MCP_TOKEN
+codex mcp list       <span class="tok-c"># Auth: Bearer token — true with or without a valid token, so also run:</span>
+codex exec "Call the list-collections tool on the solr-mcp MCP server and reply with its raw result"
+<span class="tok-c"># ["shows-auto", ...]   ← the proof. "Access Denied" here means the token did not reach the server.</span></code></pre></div>
+          <p style="font-size:.86rem;color:var(--ink-2)">
+            The token expires after about five minutes; restart Codex after refreshing it so it re-reads the variable.
+          </p>
         </div>
 
         <!-- ── Claude Desktop ── -->
