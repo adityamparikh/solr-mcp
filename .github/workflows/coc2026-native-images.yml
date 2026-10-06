@@ -1,5 +1,7 @@
-# One-off: build the Community over Code 2026 native images (stdio + http,
-# amd64 + arm64) from this branch and publish multi-arch tags to GHCR.
+# One-off: build the Community over Code 2026 native http image (amd64 +
+# arm64) with HTTP security off and publish it as :coc2026-native-http.
+# Spring AOT fixes the security filter chain when the binary is compiled, so
+# HTTP_SECURITY_ENABLED has to be set for the build; at run time it is ignored.
 # Steps mirror release-publish.yml's publish-native / publish-native-manifests.
 name: coc2026 native images
 
@@ -18,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        profile: [stdio, http]
+        profile: [http]
         arch:
           - { name: amd64, runs-on: ubuntu-latest }
           - { name: arm64, runs-on: ubuntu-24.04-arm }
@@ -37,12 +39,13 @@ jobs:
         run: echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
       - name: Build native image
         env:
-          IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/solr-mcp:coc2026-native-${{ matrix.profile }}-${{ matrix.arch.name }}
+          IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/solr-mcp:coc2026-native-${{ matrix.profile }}-unsecured-${{ matrix.arch.name }}
           PROFILE: ${{ matrix.profile }}
+          HTTP_SECURITY_ENABLED: "false"
         run: ./gradlew bootBuildImage -Pnative "-Pprofile=${PROFILE}" "--imageName=${IMAGE_NAME}" --no-daemon
       - name: Push
         env:
-          IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/solr-mcp:coc2026-native-${{ matrix.profile }}-${{ matrix.arch.name }}
+          IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/solr-mcp:coc2026-native-${{ matrix.profile }}-unsecured-${{ matrix.arch.name }}
         run: docker push "${IMAGE_NAME}"
 
   manifests:
@@ -64,11 +67,7 @@ jobs:
           REPO_OWNER: ${{ github.repository_owner }}
         run: |
           BASE="ghcr.io/${REPO_OWNER}/solr-mcp"
-          for PROFILE in stdio http; do
-            for TAG in "coc2026-native-${PROFILE}" "latest-native-${PROFILE}" "1.0.0-SNAPSHOT-native-${PROFILE}"; do
-              docker buildx imagetools create --tag "${BASE}:${TAG}" \
-                "${BASE}:coc2026-native-${PROFILE}-amd64" \
-                "${BASE}:coc2026-native-${PROFILE}-arm64"
-            done
-            docker buildx imagetools inspect "${BASE}:coc2026-native-${PROFILE}"
-          done
+          docker buildx imagetools create --tag "${BASE}:coc2026-native-http" \
+            "${BASE}:coc2026-native-http-unsecured-amd64" \
+            "${BASE}:coc2026-native-http-unsecured-arm64"
+          docker buildx imagetools inspect "${BASE}:coc2026-native-http"
