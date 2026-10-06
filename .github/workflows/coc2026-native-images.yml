@@ -1,0 +1,74 @@
+# One-off: build the Community over Code 2026 native images (stdio + http,
+# amd64 + arm64) from this branch and publish multi-arch tags to GHCR.
+# Steps mirror release-publish.yml's publish-native / publish-native-manifests.
+name: coc2026 native images
+
+on:
+  push:
+    branches: [coc2026-native-images]
+
+jobs:
+  native:
+    name: Native (${{ matrix.profile }}, ${{ matrix.arch.name }})
+    runs-on: ${{ matrix.arch.runs-on }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [stdio, http]
+        arch:
+          - { name: amd64, runs-on: ubuntu-latest }
+          - { name: arm64, runs-on: ubuntu-24.04-arm }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up GraalVM JDK 25
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+        with:
+          java-version: '25'
+          distribution: 'graalvm'
+          cache: 'gradle'
+      - name: Log in to GHCR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+        run: echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+      - name: Build native image
+        env:
+          IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/solr-mcp:coc2026-native-${{ matrix.profile }}-${{ matrix.arch.name }}
+          PROFILE: ${{ matrix.profile }}
+        run: ./gradlew bootBuildImage -Pnative "-Pprofile=${PROFILE}" "--imageName=${IMAGE_NAME}" --no-daemon
+      - name: Push
+        env:
+          IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/solr-mcp:coc2026-native-${{ matrix.profile }}-${{ matrix.arch.name }}
+        run: docker push "${IMAGE_NAME}"
+
+  manifests:
+    name: Assemble multi-arch tags
+    runs-on: ubuntu-latest
+    needs: native
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Log in to GHCR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+        run: echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+      - name: Create manifest lists
+        env:
+          REPO_OWNER: ${{ github.repository_owner }}
+        run: |
+          BASE="ghcr.io/${REPO_OWNER}/solr-mcp"
+          for PROFILE in stdio http; do
+            for TAG in "coc2026-native-${PROFILE}" "latest-native-${PROFILE}" "1.0.0-SNAPSHOT-native-${PROFILE}"; do
+              docker buildx imagetools create --tag "${BASE}:${TAG}" \
+                "${BASE}:coc2026-native-${PROFILE}-amd64" \
+                "${BASE}:coc2026-native-${PROFILE}-arm64"
+            done
+            docker buildx imagetools inspect "${BASE}:coc2026-native-${PROFILE}"
+          done
