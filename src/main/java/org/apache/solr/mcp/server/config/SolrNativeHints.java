@@ -72,7 +72,10 @@ public class SolrNativeHints {
 			"org.apache.solr.mcp.server.collection.QueryStats", "org.apache.solr.mcp.server.collection.CacheStats",
 			"org.apache.solr.mcp.server.collection.CacheInfo", "org.apache.solr.mcp.server.collection.HandlerStats",
 			"org.apache.solr.mcp.server.collection.HandlerInfo", "org.apache.solr.mcp.server.search.SearchResponse",
-			"org.apache.solr.mcp.server.search.SortClause", "org.apache.solr.mcp.server.schema.SchemaUpdateResult");
+			"org.apache.solr.mcp.server.search.SortClause", "org.apache.solr.mcp.server.schema.SchemaUpdateResult",
+			"org.apache.solr.mcp.server.cluster.ClusterStatusResult", "org.apache.solr.mcp.server.cluster.ReplicaIssue",
+			"org.apache.solr.mcp.server.cluster.CollectionState", "org.apache.solr.mcp.server.cluster.ShardState",
+			"org.apache.solr.mcp.server.cluster.ReplicaState");
 
 	static class Registrar implements RuntimeHintsRegistrar {
 		@Override

@@ -544,7 +544,8 @@ public class CollectionService {
 	@McpTool(
 			name = "get-collection-stats",
 			annotations = @McpTool.McpAnnotations(readOnlyHint = true),
-			description = "Get stats/metrics on a Solr collection. cacheStats and handlerStats may be"
+			description = "Size and performance of one collection: document and segment counts, query, cache"
+					+ " and handler stats. cacheStats and handlerStats may be"
 					+ " null when Solr's /admin/metrics API does not provide them for the collection;"
 					+ " this is expected and not an error.")
 	public SolrMetrics getCollectionStats(
@@ -1001,7 +1002,7 @@ public class CollectionService {
 	@McpTool(
 			name = "check-health",
 			annotations = @McpTool.McpAnnotations(readOnlyHint = true),
-			description = "Check health of a Solr collection")
+			description = "Check that one collection answers queries: a ping plus its document count.")
 	public SolrHealthStatus checkHealth(@McpToolParam(description = "Solr collection") String collection) {
 		String actualCollection = extractCollectionName(collection);
 		try {
