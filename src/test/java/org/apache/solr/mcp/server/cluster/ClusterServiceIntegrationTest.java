@@ -35,7 +35,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Integration tests for {@link ClusterService} against the shared single-node
@@ -62,7 +62,7 @@ class ClusterServiceIntegrationTest {
 	private AliasService aliasService;
 
 	@Autowired
-	private ObjectMapper objectMapper;
+	private JsonMapper jsonMapper;
 
 	@BeforeAll
 	void setupCollection() throws Exception {
@@ -78,7 +78,7 @@ class ClusterServiceIntegrationTest {
 
 	@Test
 	void newCollectionHasOneActiveLeaderOnTheLiveNode() throws Exception {
-		JsonNode status = objectMapper.valueToTree(clusterService.getClusterStatus(TEST_COLLECTION));
+		JsonNode status = jsonMapper.valueToTree(clusterService.getClusterStatus(TEST_COLLECTION));
 
 		assertThat(status.get("live_nodes")).hasSize(1);
 		String liveNode = status.get("live_nodes").get(0).asString();
@@ -115,7 +115,7 @@ class ClusterServiceIntegrationTest {
 
 	@Test
 	void resourceReturnsTheSameStatusAsJson() {
-		JsonNode json = objectMapper.readTree(clusterService.getClusterStatusResource());
+		JsonNode json = jsonMapper.readTree(clusterService.getClusterStatusResource());
 
 		assertThat(json.has("error")).isFalse();
 		assertThat(json.get("live_nodes")).isNotEmpty();
@@ -123,6 +123,6 @@ class ClusterServiceIntegrationTest {
 	}
 
 	private Collection<String> collectionNames(Map<String, Object> status) {
-		return objectMapper.valueToTree(status).get("collections").propertyNames();
+		return jsonMapper.valueToTree(status).get("collections").propertyNames();
 	}
 }
