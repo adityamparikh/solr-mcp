@@ -116,6 +116,12 @@ import org.springframework.util.StringUtils;
  * {@code /solr/}) still happens in {@link SolrConfig}.
  *
  * <p>
+ * {@code url} must not carry credentials ({@code http://user:pass@host}). SolrJ
+ * does not authenticate with them, and SolrJ's error messages repeat the URL
+ * verbatim, so they would reach logs and MCP clients. Use {@code username} and
+ * {@code password} instead.
+ *
+ * <p>
  * <strong>Optional Basic Authentication:</strong>
  *
  * <p>
@@ -150,6 +156,10 @@ public record SolrConfigurationProperties(String url, @Nullable String username,
 		if (!isAbsoluteHttpUrlWithHost(url)) {
 			throw new IllegalArgumentException("solr.url must be an absolute http or https URL including a host, "
 					+ "for example http://localhost:8983/solr/ (was: '" + url + "')");
+		}
+		if (URI.create(url).getRawUserInfo() != null) {
+			throw new IllegalArgumentException("solr.url must not contain a username or password; set solr.username "
+					+ "and solr.password (SOLR_USERNAME / SOLR_PASSWORD) instead");
 		}
 	}
 
