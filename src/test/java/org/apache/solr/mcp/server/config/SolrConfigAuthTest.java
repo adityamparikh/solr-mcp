@@ -33,7 +33,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.json.JsonTest;
 import org.springframework.util.ReflectionUtils;
-import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Unit tests for the optional HTTP Basic Authentication wiring performed by
@@ -53,7 +53,7 @@ import tools.jackson.databind.ObjectMapper;
 class SolrConfigAuthTest {
 
 	@Autowired
-	private ObjectMapper objectMapper;
+	private JsonMapper objectMapper;
 
 	@Test
 	void noCredentialsWhenBothMissing() throws Exception {

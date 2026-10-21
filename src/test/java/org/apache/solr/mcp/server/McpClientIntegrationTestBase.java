@@ -47,7 +47,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.TestMethodOrder;
 import tools.jackson.core.type.TypeReference;
-import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -71,7 +70,7 @@ public abstract class McpClientIntegrationTestBase {
 	 */
 	protected static final int SHOWS_DOC_COUNT = 61;
 
-	protected static final ObjectMapper OBJECT_MAPPER = JsonMapper.builder().build();
+	protected static final JsonMapper OBJECT_MAPPER = JsonMapper.builder().build();
 
 	protected McpSyncClient mcpClient;
 

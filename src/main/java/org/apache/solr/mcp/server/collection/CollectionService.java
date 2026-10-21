@@ -56,7 +56,7 @@ import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
-import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Spring Service providing comprehensive Solr collection management and
@@ -281,7 +281,7 @@ public class CollectionService {
 	/** SolrJ client for communicating with Solr server */
 	private final SolrClient solrClient;
 
-	private final ObjectMapper objectMapper;
+	private final JsonMapper objectMapper;
 
 	/**
 	 * Constructs a new CollectionService with the required dependencies.
@@ -293,11 +293,11 @@ public class CollectionService {
 	 * @param solrClient
 	 *            the SolrJ client instance for communicating with Solr
 	 * @param objectMapper
-	 *            the Jackson ObjectMapper for JSON serialization
+	 *            the Jackson JsonMapper for JSON serialization
 	 * @see SolrClient
 	 * @see SolrConfigurationProperties
 	 */
-	public CollectionService(SolrClient solrClient, ObjectMapper objectMapper) {
+	public CollectionService(SolrClient solrClient, JsonMapper objectMapper) {
 		this.solrClient = solrClient;
 		this.objectMapper = objectMapper;
 	}
