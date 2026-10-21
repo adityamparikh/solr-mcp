@@ -311,7 +311,7 @@ public abstract class McpClientIntegrationTestBase {
 		TextResourceContents contents = assertInstanceOf(TextResourceContents.class, result.contents().getFirst());
 		Map<String, Object> status = OBJECT_MAPPER.readValue(contents.text(), new TypeReference<>() {
 		});
-		assertTrue(status.containsKey("healthy"), "Cluster status should report healthy: " + contents.text());
+		assertTrue(status.containsKey("live_nodes"), "Cluster status should list live nodes: " + contents.text());
 	}
 
 	@Test
