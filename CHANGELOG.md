@@ -13,15 +13,13 @@ Apache Solr MCP 1.0.0 is the project's first release: a Model Context Protocol (
 - **Prompts, resources and completions**: guided prompts (`explore-collections`, `setup-collection`, `search-collection`, `index-data`, `view-schema`, `design-schema`), the `solr://collections`, `solr://{collection}/schema` and `solr://{collection}/fields` resources, and collection-name completion for their arguments.
 - **STDIO and HTTP transports**: STDIO is the default; `PROFILES=http` serves stateless streamable HTTP.
 - **MCP 2026-07-28 protocol, opt-in**: `MCP_PROTOCOL=modern` serves the newest MCP spec revision (no `initialize` handshake or session, `server/discover`, `Mcp-Method`/`Mcp-Name` headers) over HTTP or STDIO, with every tool, resource, prompt and completion. Built on the modern server in MCP Java SDK 2.2.0, the SDK's first GA release with this revision. The default stays on the 2025 revisions that current clients speak.
-- **OAuth2 security for HTTP, on by default**: JWT bearer tokens from the issuer in `OAUTH2_ISSUER_URI`, with audience validation and configurable CORS origins (`MCP_CORS_ALLOWED_ORIGINS`). Setup guides cover Auth0 and Keycloak.
+- **OAuth2 security for HTTP, on by default**: JWT bearer tokens from the issuer in `OAUTH2_ISSUER_URI`, with audience validation and configurable CORS origins (`MCP_CORS_ALLOWED_ORIGINS`). Every MCP tool, resource, prompt and completion is gated by one of three independent scopes: `solr:read`, `solr:write` or `solr:admin` ([#66](https://github.com/apache/solr-mcp/issues/66)). Setup guides cover Auth0 and Keycloak.
 - **Docker images**: `apache/solr-mcp`, a JVM image (amd64 and arm64) that serves both transports, and GraalVM native images for each transport (`<version>-native-stdio`, `<version>-native-http`) on GHCR.
 - **Observability in HTTP mode**: OpenTelemetry traces, metrics and logs exported over OTLP/HTTP, with a span for every tool call and logs correlated to the trace they were written in.
 - **Software bill of materials and license disclosure**: a CycloneDX SBOM embedded in the JAR and every image and served at `/actuator/sbom/application` in HTTP mode, and a binary `LICENSE`/`NOTICE` that lists every bundled dependency.
 - **Client setup guides** for Claude Desktop, Claude Code, Codex, ChatGPT, VS Code, Cursor, JetBrains, Zed and MCP Inspector.
 
 ### Changed
-
-- **Scoped tool authorization ([#66](https://github.com/apache/solr-mcp/issues/66))**: Gated all 28 MCP entry points by three independent scopes: `solr:read`, `solr:write`, and `solr:admin`. In secured HTTP mode, tokens without required scopes are denied. See the [upgrade guide](docs/security/http.md#upgrading-to-scoped-authorization) for migration instructions and the zero-code compatibility bridge.
 
 ### Fixed
 
