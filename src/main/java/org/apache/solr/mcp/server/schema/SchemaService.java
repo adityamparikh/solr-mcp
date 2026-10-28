@@ -30,6 +30,7 @@ import org.apache.solr.client.solrj.request.LukeRequest;
 import org.apache.solr.client.solrj.request.schema.AnalyzerDefinition;
 import org.apache.solr.client.solrj.request.schema.FieldTypeDefinition;
 import org.apache.solr.client.solrj.request.schema.SchemaRequest;
+import org.apache.solr.mcp.server.security.McpAuthorities;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.mcp.server.util.PromptNames;
 import org.jspecify.annotations.Nullable;
@@ -171,7 +172,7 @@ public class SchemaService {
    * @throws IllegalStateException with {@link #SCHEMA_RESOURCE_ERROR} if the schema cannot be
    *     retrieved or serialized
    */
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize(McpAuthorities.READ)
   @McpResource(
       uri = "solr://{collection}/schema",
       name = "solr-collection-schema",
@@ -252,7 +253,7 @@ public class SchemaService {
    * @see CollectionSchema
    * @see SchemaRequest
    */
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize(McpAuthorities.READ)
   @McpTool(
       name = "get-schema",
       annotations = @McpTool.McpAnnotations(readOnlyHint = true),
@@ -280,7 +281,7 @@ public class SchemaService {
    * @throws IllegalStateException with {@link #FIELDS_RESOURCE_ERROR} if the fields cannot be
    *     listed or serialized
    */
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize(McpAuthorities.READ)
   @McpResource(
       uri = "solr://{collection}/fields",
       name = "solr-collection-fields",
@@ -320,7 +321,7 @@ public class SchemaService {
    *     SolrException}
    * @throws IOException if communication with Solr fails
    */
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize(McpAuthorities.READ)
   @McpTool(
       name = "list-fields",
       annotations = @McpTool.McpAnnotations(readOnlyHint = true),
@@ -364,7 +365,7 @@ public class SchemaService {
    * @throws SolrServerException if there are errors communicating with Solr
    * @throws IOException if there are I/O errors during communication
    */
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize(McpAuthorities.ADMIN)
   @McpTool(
       name = "add-fields",
       annotations = @McpTool.McpAnnotations(destructiveHint = false),
@@ -407,7 +408,7 @@ public class SchemaService {
    * @throws SolrServerException if there are errors communicating with Solr
    * @throws IOException if there are I/O errors during communication
    */
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize(McpAuthorities.ADMIN)
   @McpTool(
       name = "add-field-types",
       annotations = @McpTool.McpAnnotations(destructiveHint = false),
@@ -561,7 +562,7 @@ public class SchemaService {
    * @param collection target Solr collection name
    * @return the prompt text instructing the model how to inspect the schema
    */
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize(McpAuthorities.READ)
   @McpPrompt(
       name = PromptNames.VIEW_SCHEMA,
       title = "View a Solr collection schema",
@@ -618,7 +619,7 @@ public class SchemaService {
    *     null} or blank
    * @return the prompt text instructing the model how to design the schema
    */
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize(McpAuthorities.READ)
   @McpPrompt(
       name = PromptNames.DESIGN_SCHEMA,
       title = "Design a Solr schema for a dataset",
