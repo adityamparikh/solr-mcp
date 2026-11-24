@@ -540,7 +540,11 @@ jib {
             }
     }
     from {
-        image = "eclipse-temurin:25-jre"
+        // Pinned to the first Temurin 25 build with the fix for CVE-2026-114938
+        // ("Java4Shell", a heap overflow in HotSpot's AVX-512 Base64 decoder that
+        // bearer-token parsing can reach before authentication). Do not go below
+        // 25.0.5.1; bump deliberately when newer patch releases ship.
+        image = "eclipse-temurin:25.0.5.1_2-jre"
         platforms {
             platform {
                 architecture = "amd64"

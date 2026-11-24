@@ -24,4 +24,6 @@ Apache Solr MCP 1.0.0 is the project's first release: a Model Context Protocol (
 
 ### Security
 
+- **CVE-2026-114938 ("Java4Shell")**: the JVM Docker image is now built on `eclipse-temurin:25.0.5.1_2-jre`, the first Temurin 25 build with the fix, instead of the floating `25-jre` tag.
+
 [Unreleased]: https://github.com/apache/solr-mcp/commits
