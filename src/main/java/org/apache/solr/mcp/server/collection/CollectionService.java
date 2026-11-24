@@ -377,7 +377,7 @@ public class CollectionService {
    * @param argument the partial value the client is completing
    * @return matching collection names, capped at {@link #MAX_COMPLETION_RESULTS}
    */
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize(McpAuthorities.READ)
   @McpComplete(uri = "solr://{collection}/fields")
   public List<String> completeFieldsResourceCollection(CompleteRequest.CompleteArgument argument) {
     return completeCollection(argument);

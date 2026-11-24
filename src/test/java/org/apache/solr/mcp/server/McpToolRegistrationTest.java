@@ -299,6 +299,7 @@ class McpToolRegistrationTest {
           Map.entry("CollectionService#createCollection", McpAuthorities.ADMIN),
           Map.entry("CollectionService#exploreCollectionsPrompt", McpAuthorities.READ),
           Map.entry("CollectionService#setupCollectionPrompt", McpAuthorities.READ),
+          Map.entry("CollectionService#completeFieldsResourceCollection", McpAuthorities.READ),
 
           // IndexingService
           Map.entry("IndexingService#indexJsonDocuments", McpAuthorities.WRITE),
@@ -314,6 +315,8 @@ class McpToolRegistrationTest {
           Map.entry("SchemaService#addFieldTypes", McpAuthorities.ADMIN),
           Map.entry("SchemaService#viewSchemaPrompt", McpAuthorities.READ),
           Map.entry("SchemaService#designSchemaPrompt", McpAuthorities.READ),
+          Map.entry("SchemaService#listFields", McpAuthorities.READ),
+          Map.entry("SchemaService#getFieldsResource", McpAuthorities.READ),
 
           // AliasService
           Map.entry("AliasService#listAliases", McpAuthorities.READ),

@@ -179,7 +179,7 @@ Every MCP endpoint is gated by one of three independent, non-hierarchical scopes
 
 | Scope | Authority Checked | Intended Purpose & Coverage |
 |---|---|---|
-| `solr:read` | `SCOPE_solr:read` | All read-only operations: `search`, `list-collections`, `get-collection-stats`, `check-health`, `get-schema`, `list-aliases`, MCP resources (`solr://collections`, `solr://{collection}/schema`), MCP prompts (`search-collection`, `explore-collections`, `setup-collection`, `index-data`, `view-schema`, `design-schema`), and completions. |
+| `solr:read` | `SCOPE_solr:read` | All read-only operations: `search`, `list-collections`, `get-collection-stats`, `check-health`, `get-schema`, `list-fields`, `list-aliases`, MCP resources (`solr://collections`, `solr://{collection}/schema`, `solr://{collection}/fields`), MCP prompts (`search-collection`, `explore-collections`, `setup-collection`, `index-data`, `view-schema`, `design-schema`), and completions. |
 | `solr:write` | `SCOPE_solr:write` | Document indexing operations: `index-json-documents`, `index-csv-documents`, `index-xml-documents`, and `index-markdown-documents`. |
 | `solr:admin` | `SCOPE_solr:admin` | Administrative and schema-altering actions: `create-collection`, `create-alias`, `delete-alias`, `add-fields`, and `add-field-types`. |
 
