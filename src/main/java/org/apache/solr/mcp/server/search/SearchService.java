@@ -234,7 +234,7 @@ public class SearchService {
    * @throws SolrServerException If there's an error communicating with Solr
    * @throws IOException If there's an I/O error
    */
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize(McpAuthorities.READ)
   public SearchResponse search(
       String collection,
       @Nullable String query,
