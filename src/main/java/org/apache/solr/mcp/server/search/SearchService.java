@@ -363,8 +363,9 @@ public class SearchService {
       return new SolrException(
           SolrException.ErrorCode.BAD_REQUEST,
           "Search failed: Solr rejected the request. Check query syntax, filter queries, facet fields,"
-              + " sort clauses, and pagination; call list-fields to verify the field names, and facet and"
-              + " sort only on single-valued fields with D (docValues) in their schema flags.");
+              + " sort clauses, and pagination; call list-fields to verify the field names. Facet only on"
+              + " fields whose flags include DOC_VALUES, and sort only on those that are also not"
+              + " MULTI_VALUED.");
     }
     if (e.code() == SolrException.ErrorCode.UNAUTHORIZED.code
         || e.code() == SolrException.ErrorCode.FORBIDDEN.code) {
@@ -413,10 +414,11 @@ public class SearchService {
 				   - Call `list-fields` on `%s`. It lists the fields that hold data, dynamic-field
 				     instances included. From each field's `type` identify which are searchable text
 				     (`text_general` or similar tokenized types), which are filterable exact-match
-				     (`string`/`strings`), and which are numeric/date ranges. A `D` in a field's
-				     `schema` flags (decoded by `info.key`) means docValues: those are the fields you
-				     can facet on, and sort on when they are single-valued (no `M`). `dynamicBase`
-				     shows which pattern a field came from (e.g. `*_s`).
+				     (`string`/`strings`), and which are numeric/date ranges. Fields whose `flags`
+				     include `DOC_VALUES` are the ones you can facet on; you can sort on them when
+				     `flags` does not also include `MULTI_VALUED`. `dynamicBase` shows which pattern a
+				     field came from (e.g. `*_s`). A missing or 0 `docs` on a numeric, date or
+				     docValues-only field means Solr could not count it, not that it is empty.
 
 				2. Translate the question into Solr query parts.
 				   - Pick the most informative tokens from the question. Map them to fields:
