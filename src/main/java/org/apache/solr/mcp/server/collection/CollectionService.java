@@ -519,9 +519,9 @@ public class CollectionService {
       name = "get-collection-stats",
       annotations = @McpTool.McpAnnotations(readOnlyHint = true),
       description =
-          "Get index size and performance metrics for a Solr collection: document and segment "
-              + "counts, and query, cache and handler stats. It does not describe fields; use "
-              + "list-fields for the fields that hold data. cacheStats and handlerStats may be"
+          "Size and performance of one collection: document and segment counts, query, cache"
+              + " and handler stats. It does not describe fields; use list-fields for the fields"
+              + " that hold data. cacheStats and handlerStats may be"
               + " null when Solr's /admin/metrics API does not provide them for the collection;"
               + " this is expected and not an error.")
   public SolrMetrics getCollectionStats(
@@ -930,7 +930,10 @@ public class CollectionService {
   @McpTool(
       name = "check-health",
       annotations = @McpTool.McpAnnotations(readOnlyHint = true),
-      description = "Check health of a Solr collection")
+      description =
+          "Check that one collection answers queries: a ping plus its document count. It does not"
+              + " report replica state, so it can report healthy while a replica is down; use get-cluster-status for"
+              + " replicas and nodes.")
   public SolrHealthStatus checkHealth(
       @McpToolParam(description = "Solr collection") String collection) {
     String actualCollection = extractCollectionName(collection);
@@ -988,7 +991,8 @@ public class CollectionService {
       description =
           "Create a new Solr collection. By default it gets its own copy of the _default configset,"
               + " so its schema is independent of other collections. Pass configSet only to share an existing"
-              + " configset. numShards and replicationFactor default to 1.")
+              + " configset; call list-configsets to see the available configsets. numShards and"
+              + " replicationFactor default to 1.")
   public CollectionCreationResult createCollection(
       @McpToolParam(description = "Name of the collection to create") String name,
       @McpToolParam(

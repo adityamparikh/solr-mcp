@@ -112,6 +112,26 @@ class SolrNativeHintsTest {
   }
 
   @Test
+  void registersClusterRecordHints() {
+    for (String typeName :
+        List.of(
+            "org.apache.solr.mcp.server.cluster.ClusterStatus",
+            "org.apache.solr.mcp.server.cluster.ClusterStatus$Collection",
+            "org.apache.solr.mcp.server.cluster.ClusterStatus$Shard",
+            "org.apache.solr.mcp.server.cluster.ClusterStatus$Replica",
+            "org.apache.solr.mcp.server.cluster.ConfigSetList")) {
+      assertTrue(
+          RuntimeHintsPredicates.reflection()
+              .onType(TypeReference.of(typeName))
+              .withMemberCategories(
+                  MemberCategory.INVOKE_DECLARED_CONSTRUCTORS,
+                  MemberCategory.INVOKE_DECLARED_METHODS)
+              .test(hints),
+          typeName);
+    }
+  }
+
+  @Test
   void registersLogbackSpringXmlResourceHint() {
     // The configuration Spring Boot loads by convention; it carries the
     // per-profile appenders and must survive AOT.
