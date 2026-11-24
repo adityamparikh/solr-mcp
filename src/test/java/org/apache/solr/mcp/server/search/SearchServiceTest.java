@@ -41,6 +41,7 @@ import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.SolrDocumentList;
 import org.apache.solr.common.SolrException;
+import org.apache.solr.common.luke.FieldFlag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledInNativeImage;
 import org.mockito.ArgumentCaptor;
@@ -782,5 +783,27 @@ class SearchServiceTest {
     assertTrue(body.contains("queryFields"), "Prompt should explain queryFields");
     assertTrue(body.contains("`fields`"), "Prompt should explain fields");
     assertTrue(body.contains("numFound"), "Prompt should mention numFound interpretation");
+  }
+
+  @Test
+  void searchGuidance_namesTheFlagsListFieldsReturns() throws Exception {
+    // list-fields writes FieldFlag names; Luke's raw schema letters and info.key never reach it.
+    String prompt =
+        new SearchService(mock(SolrClient.class)).searchCollectionPrompt("shows", "question");
+    String hint =
+        assertThrows(
+                SolrException.class,
+                () ->
+                    serviceThrowing(
+                            new SolrException(SolrException.ErrorCode.BAD_REQUEST, "bad request"))
+                        .search("test_collection", "*:*", null, null, null, null, null))
+            .getMessage();
+
+    for (String text : List.of(prompt, hint)) {
+      assertTrue(text.contains(FieldFlag.DOC_VALUES.name()), text);
+      assertTrue(text.contains(FieldFlag.MULTI_VALUED.name()), text);
+      assertFalse(text.contains("info.key"), text);
+      assertFalse(text.contains("schema flags"), text);
+    }
   }
 }
