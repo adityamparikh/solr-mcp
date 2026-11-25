@@ -205,10 +205,10 @@ public abstract class McpClientIntegrationTestBase {
 
     assertNotNull(result);
     assertNotError(result);
-    Map<String, List<String>> listed =
+    List<Map<String, String>> listed =
         OBJECT_MAPPER.readValue(extractText(result), new TypeReference<>() {});
     assertTrue(
-        listed.get("collections").contains(COLLECTION),
+        listed.contains(Map.of("name", COLLECTION)),
         "Created collection should appear in list: " + listed);
   }
 
