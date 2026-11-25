@@ -83,6 +83,36 @@ class JwtAuthoritiesMappingTest {
       assertTrue(authorities.contains("SCOPE_solr:admin"), "got: " + authorities);
     }
 
+    /** Spring Authorization Server sends {@code scope} as a JSON array rather than a string. */
+    @Test
+    void mapsScopeClaimSentAsList() {
+      Jwt jwt =
+          Jwt.withTokenValue("mock-scope-list-token")
+              .header("alg", "none")
+              .subject("user-6")
+              .claim("scope", List.of("solr:read", "solr:write"))
+              .build();
+
+      Set<String> authorities = getAuthorityStrings(jwtAuthenticationConverter, jwt);
+      assertTrue(authorities.contains("SCOPE_solr:read"), "got: " + authorities);
+      assertTrue(authorities.contains("SCOPE_solr:write"), "got: " + authorities);
+    }
+
+    /** Entra ID sends {@code scp} as a space-delimited string rather than an array. */
+    @Test
+    void splitsScpClaimSentAsString() {
+      Jwt jwt =
+          Jwt.withTokenValue("mock-scp-string-token")
+              .header("alg", "none")
+              .subject("user-7")
+              .claim("scp", "solr:read solr:write")
+              .build();
+
+      Set<String> authorities = getAuthorityStrings(jwtAuthenticationConverter, jwt);
+      assertTrue(authorities.contains("SCOPE_solr:read"), "got: " + authorities);
+      assertTrue(authorities.contains("SCOPE_solr:write"), "got: " + authorities);
+    }
+
     @Test
     void tokenWithoutScopesGetsNoAuthorities() {
       Jwt jwt = Jwt.withTokenValue("mock-bare-token").header("alg", "none").subject("u").build();
