@@ -191,10 +191,11 @@ public abstract class McpClientIntegrationTestBase {
 
     assertNotNull(result);
     assertNotError(result);
-    String text = extractText(result);
-    assertTrue(
-        text.contains("success") || text.contains("true"),
-        "Collection creation should succeed: " + text);
+    Map<String, Object> created =
+        OBJECT_MAPPER.readValue(extractText(result), new TypeReference<>() {});
+    assertEquals(
+        COLLECTION, created.get("name"), () -> "Collection creation should succeed: " + created);
+    assertEquals(COLLECTION + ".AUTOCREATED", created.get("configSet"));
   }
 
   @Test
@@ -204,8 +205,11 @@ public abstract class McpClientIntegrationTestBase {
 
     assertNotNull(result);
     assertNotError(result);
-    String text = extractText(result);
-    assertTrue(text.contains(COLLECTION), "Created collection should appear in list: " + text);
+    Map<String, List<String>> listed =
+        OBJECT_MAPPER.readValue(extractText(result), new TypeReference<>() {});
+    assertTrue(
+        listed.get("collections").contains(COLLECTION),
+        "Created collection should appear in list: " + listed);
   }
 
   @Test
@@ -607,10 +611,13 @@ public abstract class McpClientIntegrationTestBase {
 
     assertNotNull(result);
     assertNotError(result);
-    String text = extractText(result);
-    assertTrue(
-        text.contains("success") || text.contains("true"),
-        "Shows collection creation should succeed: " + text);
+    Map<String, Object> created =
+        OBJECT_MAPPER.readValue(extractText(result), new TypeReference<>() {});
+    assertEquals(
+        SHOWS_COLLECTION,
+        created.get("name"),
+        () -> "Shows collection creation should succeed: " + created);
+    assertEquals(SHOWS_COLLECTION + ".AUTOCREATED", created.get("configSet"));
   }
 
   @Test
