@@ -310,7 +310,7 @@ class CollectionServiceTest {
 
     assertEquals(
         HealthStatus.unhealthy("missing", HealthStatus.Reason.COLLECTION_NOT_FOUND), result);
-    assertFalse(objectMapper.writeValueAsString(result).contains("http://"));
+    assertFalse(jsonMapper.writeValueAsString(result).contains("http://"));
   }
 
   @Test
@@ -924,7 +924,7 @@ class CollectionServiceTest {
 
     assertNull(result.caches());
     assertNull(result.handlers());
-    String json = objectMapper.writeValueAsString(result);
+    String json = jsonMapper.writeValueAsString(result);
     assertFalse(json.contains("\"caches\""), json);
     assertFalse(json.contains("\"handlers\""), json);
   }
