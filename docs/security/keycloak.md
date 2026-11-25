@@ -109,8 +109,8 @@ application context comes up.
 > `SPRING_DOCKER_COMPOSE_ENABLED=false` so Boot does not bring up a second Keycloak.
 
 This block is runnable end to end — copy the whole thing. It waits for
-Keycloak, creates the realm, client, audience mapper and test user, verifies
-the realm resolves, and only then starts the server.
+Keycloak, creates the realm, the `solr:*` scopes and roles, the client, audience
+mapper and test user, verifies the realm resolves, and only then starts the server.
 
 ```bash
 # ── 1. Start Keycloak ────────────────────────────────────────────────────────
@@ -132,7 +132,7 @@ until curl -sf "$KC/realms/master/.well-known/openid-configuration" >/dev/null; 
 done
 echo "Keycloak ready."
 
-# ── 2. Configure the realm, client and user ──────────────────────────────────
+# ── 2. Configure the realm, scopes, client and user ──────────────────────────
 ADMIN_TOKEN=$(curl -s -X POST "$KC/realms/master/protocol/openid-connect/token" \
   -d client_id=admin-cli -d username=admin -d password=admin \
   -d grant_type=password | jq -r .access_token)
@@ -142,7 +142,47 @@ curl -s -X POST "$KC/admin/realms" \
   -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
   -d '{"realm":"solr-mcp","enabled":true}'
 
-# 2b. Public client for testing / MCP Inspector.
+# 2b. The scopes every MCP tool checks, and the roles that gate write and admin.
+#
+#     Every tool needs solr:read, solr:write or solr:admin; a token with none of
+#     them is denied every tool. solr:read is a realm default scope, so every
+#     token gets it. solr:write and solr:admin are optional (granted only when the
+#     client asks with scope=...) AND mapped to the solr-writer / solr-admin realm
+#     roles, so Keycloak leaves them out of the token for users without the role.
+#     Without the role mapping any user could request scope=solr:admin.
+#
+#     This runs before the client is created: a new client inherits the realm's
+#     default and optional scopes at creation time, an existing one does not.
+for SCOPE in solr:read solr:write solr:admin; do
+  curl -s -X POST "$KC/admin/realms/solr-mcp/client-scopes" \
+    -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
+    -d "{\"name\":\"$SCOPE\",\"protocol\":\"openid-connect\",
+         \"attributes\":{\"include.in.token.scope\":\"true\"}}"
+done
+scope_id() {
+  curl -s "$KC/admin/realms/solr-mcp/client-scopes" -H "Authorization: Bearer $ADMIN_TOKEN" \
+    | jq -r --arg name "$1" '.[] | select(.name == $name) | .id'
+}
+curl -s -X PUT -H "Authorization: Bearer $ADMIN_TOKEN" \
+  "$KC/admin/realms/solr-mcp/default-default-client-scopes/$(scope_id solr:read)"
+for SCOPE in solr:write solr:admin; do
+  curl -s -X PUT -H "Authorization: Bearer $ADMIN_TOKEN" \
+    "$KC/admin/realms/solr-mcp/default-optional-client-scopes/$(scope_id "$SCOPE")"
+done
+for ROLE in solr-writer solr-admin; do
+  curl -s -X POST "$KC/admin/realms/solr-mcp/roles" \
+    -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
+    -d "{\"name\":\"$ROLE\"}"
+done
+map_scope_to_role() {
+  curl -s -X POST "$KC/admin/realms/solr-mcp/client-scopes/$(scope_id "$1")/scope-mappings/realm" \
+    -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
+    -d "[$(curl -s "$KC/admin/realms/solr-mcp/roles/$2" -H "Authorization: Bearer $ADMIN_TOKEN")]"
+}
+map_scope_to_role solr:write solr-writer
+map_scope_to_role solr:admin solr-admin
+
+# 2c. Public client for testing / MCP Inspector.
 #
 #     protocolMappers: Keycloak does not honour the RFC 8707 `resource=`
 #     parameter yet, so an Audience protocol mapper is the supported way to put
@@ -172,7 +212,8 @@ curl -s -X POST "$KC/admin/realms/solr-mcp/clients" \
         }]
       }"
 
-# 2c. Test user.
+# 2d. Test user. It holds neither role, so its tokens are read-only; see
+#     "Scoped Access Control and Realm Roles" to let a user index or administer.
 #
 #     firstName and lastName are REQUIRED. Keycloak 24+ enforces a declarative
 #     user profile in which both are mandatory; a user created without them is
@@ -272,6 +313,41 @@ docker run -d --name keycloak \
 > issuer eagerly at startup and will not boot against a realm that does not
 > exist. See [Troubleshooting](#troubleshooting).
 
+### Creating the Solr Scopes and Roles
+
+Every MCP tool requires one of `solr:read`, `solr:write` or `solr:admin`, so a
+realm without them issues tokens that are denied every tool. Create them
+**before the clients**: a new client inherits the realm's default and optional
+client scopes when it is created, and an existing client does not pick them up
+later.
+
+1. Navigate to **Client scopes** → **Create client scope**
+2. Configure:
+   - Name: `solr:read`
+   - Type: **Default**
+   - Protocol: `OpenID Connect`
+   - Include in token scope: **ON**
+3. Click **Save**
+4. Repeat for `solr:write` and `solr:admin` with Type: **Optional**
+
+Optional scopes alone only limit what a client asks for — Keycloak grants an
+optional scope with no role mapping to any user who requests it. Tie the write
+and admin scopes to roles:
+
+1. Navigate to **Realm roles** → **Create role**, name it `solr-writer`, and
+   click **Save**. Repeat for `solr-admin`
+2. Navigate to **Client scopes** → `solr:write` → **Scope** tab → **Assign role**,
+   filter by realm roles, select `solr-writer`, and click **Assign**
+3. Repeat for `solr:admin` with `solr-admin`
+
+A user (or a client's service account) now receives `solr:write` or `solr:admin`
+only when the client requests it **and** the user holds the matching role. See
+[Scoped Access Control and Realm Roles](#scoped-access-control-and-realm-roles).
+
+> If you created a client before this step, add the scopes to it by hand:
+> **Clients** → the client → **Client scopes** → **Add client scope**, adding
+> `solr:read` as **Default** and the other two as **Optional**.
+
 ### Creating Clients
 
 You need at least one client for applications to authenticate against.
@@ -349,7 +425,12 @@ print(json.dumps(json.loads(base64.urlsafe_b64decode(p))))" "$1"
 }
 jwt_payload "$TOKEN" | jq .aud
 # [ "http://localhost:8080/mcp", "account" ]
+jwt_payload "$TOKEN" | jq -r .scope
+# profile email solr:read     (order varies; solr:read must be there)
 ```
+
+If `scope` has no `solr:read`, the client was created before the scopes; see
+[Creating the Solr Scopes and Roles](#creating-the-solr-scopes-and-roles).
 
 > Decode with `base64url` semantics and re-pad, as above. The common
 > `cut -d. -f2 | base64 -d` one-liner fails on real Keycloak tokens — JWT
@@ -387,6 +468,11 @@ equivalent setup on Auth0 and Okta.
 > `UPDATE_PASSWORD` required action, which fails the token request with that same
 > message. The [Troubleshooting](#troubleshooting) section shows how to tell the two
 > apart.
+
+A new user holds no `solr-*` role, so its tokens carry only `solr:read`. To let it
+index or administer, assign the role under **Users** → `testuser` → **Role
+mapping** → **Assign role** (realm roles `solr-writer`, `solr-admin`), and request
+the scope when fetching the token, for example `-d "scope=solr:admin"`.
 
 ## Spring Boot Configuration
 
@@ -636,6 +722,18 @@ If `aud` is only `"account"`, the `protocolMappers` block above did not take —
 re-check it before moving on, because the failure surfaces much later as a
 `401` from the transport.
 
+The token carries `solr:read` (`jwt_payload "$TOKEN" | jq -r .scope`), which is
+enough for the read tools. If the application also indexes or administers, give
+its service account the role and request the scope with `-d "scope=solr:write"`:
+
+```bash
+SA_ID=$(curl -s "$KC/admin/realms/solr-mcp/clients/$CLIENT_UUID/service-account-user" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" | jq -r .id)
+curl -s -X POST "$KC/admin/realms/solr-mcp/users/$SA_ID/role-mappings/realm" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
+  -d "[$(curl -s "$KC/admin/realms/solr-mcp/roles/solr-writer" -H "Authorization: Bearer $ADMIN_TOKEN")]"
+```
+
 Both tokens expire in 300s by default, `$ADMIN_TOKEN` included, and carrying
 this `$TOKEN` as far as [step 4](#4-verify) will usually outlive it. An expired
 token is rejected with the same `401` as a misconfigured one, so read the reason
@@ -733,7 +831,8 @@ A correctly configured client gets the tool result. Dropping the
 — that contrast is what confirms the gate is live rather than silently open.
 
 > If you see `Access Denied` *with* a token, check that `$TOKEN` is actually
-> populated before blaming the server. An unset variable sends the literal
+> populated and that `jwt_payload "$TOKEN" | jq -r .scope` lists `solr:read`
+> before blaming the server. An unset variable sends the literal
 > header `Bearer null`, which is indistinguishable from sending nothing — and
 > `jq -r .access_token` writes the string `null` into the variable when the
 > token request itself failed.
