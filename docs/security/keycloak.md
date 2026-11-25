@@ -920,7 +920,17 @@ The MCP server enforces fine-grained authorization using three distinct scopes: 
 
 ### Option A: Keycloak Client Scopes (Recommended)
 
-The shipped realm (`keycloak/solr-mcp-realm.json`) defines `solr:read`, `solr:write`, and `solr:admin` as `openid-connect` client scopes. Least privilege is the default: `solr:read` is a default client scope, while `solr:write` and `solr:admin` are *optional* and only appear in a token when the client asks for them with the `scope` parameter (for example `scope=solr:read solr:admin`).
+The shipped realm (`keycloak/solr-mcp-realm.json`) defines `solr:read`, `solr:write`, and `solr:admin` as `openid-connect` client scopes. `solr:read` is a default client scope, so every token carries it. `solr:write` and `solr:admin` are *optional*: they only appear in a token when the client asks for them with the `scope` parameter (for example `scope=solr:read solr:admin`), **and** the user holds the matching realm role.
+
+| Scope | Granted when | Realm role required |
+|---|---|---|
+| `solr:read` | always (default client scope) | none |
+| `solr:write` | requested **and** user has the role | `solr-writer` |
+| `solr:admin` | requested **and** user has the role | `solr-admin` |
+
+The role requirement is what makes this a per-user control. An optional client scope on its own only limits what the *client* asks for: Keycloak grants a client scope with no role scope mappings to any user who requests it, so without the mappings any user who can log in to the public `solr-mcp-client` could mint a `solr:admin` token. The realm therefore maps `solr:write` to `solr-writer` and `solr:admin` to `solr-admin` (`scopeMappings`), and Keycloak leaves the scope out of the token for users who hold neither role. When you set the scopes up in your own realm, add the same mappings: **Client scopes → `solr:admin` → Scope → Assign role**.
+
+In the shipped realm the `solr-mcp-service` service account holds both roles, and `testuser` holds neither, so `testuser` tokens are read-only. To let a user index or administer, assign the role (**Users → testuser → Role mapping → Assign role**) and request the scope.
 
 Keycloak emits the granted scopes into the standard `scope` claim:
 ```json
@@ -931,7 +941,7 @@ Keycloak emits the granted scopes into the standard `scope` claim:
 
 > The realm also defines the `basic` client scope, which carries the `sub` claim. Keycloak only creates its built-in scopes (`basic`, `profile`, `email`, ...) automatically when a realm import has no `clientScopes` array, so a realm that declares its own scopes must declare `basic` too or tokens come out without a subject.
 
-Spring Security's default `JwtGrantedAuthoritiesConverter` extracts the `scope` claim and maps each entry to `SCOPE_solr:read`, `SCOPE_solr:write`, and `SCOPE_solr:admin`. No custom converter code or configuration properties are required.
+The server's default authorities expression reads the `scope` claim (falling back to `scp`) and maps each entry to `SCOPE_solr:read`, `SCOPE_solr:write`, and `SCOPE_solr:admin`, the same mapping as Spring Security's `JwtGrantedAuthoritiesConverter`. No custom converter code is required, and `OAUTH2_AUTHORITIES_CLAIM_EXPRESSION` can stay unset.
 
 ### Option B: Keycloak Realm Roles (`realm_access.roles`)
 

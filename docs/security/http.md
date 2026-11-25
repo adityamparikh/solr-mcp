@@ -187,7 +187,7 @@ Tokens lacking the required scope are denied tool execution.
 
 ### Granting the scopes
 
-1. In your IdP, create `solr:read`, `solr:write`, and `solr:admin` and grant them to each client. By default, Spring Security reads standard `scope`/`scp` claims. For alternative claim mappings:
+1. In your IdP, create `solr:read`, `solr:write`, and `solr:admin`, and restrict who can receive `solr:write` and `solr:admin` to the users or service accounts that should hold them. Granting a scope to a *client* only controls what that client may ask for; if the IdP hands an optional scope to any user who requests it, any user can mint an admin token (in Keycloak, add role scope mappings — see [keycloak.md](keycloak.md#option-a-keycloak-client-scopes-recommended)). By default the server reads the standard `scope` claim, falling back to `scp`, each as a space-delimited string or a list, the same as Spring Security's `JwtGrantedAuthoritiesConverter`. For alternative claim mappings:
    - Keycloak realm roles (`realm_access.roles`): `OAUTH2_AUTHORITIES_CLAIM_EXPRESSION=[realm_access][roles]`
    - Auth0 RBAC (`permissions` array): `OAUTH2_AUTHORITIES_CLAIM_EXPRESSION=[permissions]`
 2. **Compatibility bridge:** If your IdP cannot issue these scopes yet, grant all three to every valid token with configuration only. This turns per-token scope enforcement off — every authenticated caller can use every tool:

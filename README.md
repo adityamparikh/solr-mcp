@@ -216,7 +216,7 @@ Running in **HTTP mode** — OAuth2, CORS, and the `HTTP_SECURITY_ENABLED` toggl
 To protect your Apache Solr cluster, apply least-privilege principles across three distinct defense-in-depth layers:
 
 1. **Backend Solr permissions (Solr Layer):** Scope the credentials configured in `SOLR_USERNAME`/`SOLR_PASSWORD` using Solr's [Rule-Based Authorization Plugin](https://solr.apache.org/guide/solr/latest/deployment-guide/rule-based-authorization-plugin.html). Restrict the user to only the collections and operations required.
-2. **Identity Provider scopes (Server Layer):** In HTTP mode, grant only the necessary functional scopes in the OAuth2 access token:
+2. **Identity Provider scopes (Server Layer):** In HTTP mode, grant only the necessary functional scopes in the OAuth2 access token, and grant `solr:write` and `solr:admin` per user, not just per client. An IdP that hands an optional scope to anyone who requests it lets any user mint an admin token ([Keycloak setup](docs/security/keycloak.md#option-a-keycloak-client-scopes-recommended)):
    - `solr:read` — Read-only querying, schema inspection, and metadata
    - `solr:write` — Indexing documents (JSON, CSV, XML, Markdown)
    - `solr:admin` — Administrative actions (creating collections/aliases, deleting aliases, adding fields and field types)

@@ -124,7 +124,7 @@ class KeycloakScopeEnforcementIntegrationTest {
   /** A token carrying only the default scope must reach read tools and be refused admin tools. */
   @Test
   void readOnlyTokenReachesReadToolsButNotAdminTools() throws Exception {
-    String token = accessToken("");
+    String token = serviceToken("");
 
     assertTrue(
         scopesOf(token).contains("solr:read"), "realm must grant solr:read by default: " + token);
@@ -140,14 +140,41 @@ class KeycloakScopeEnforcementIntegrationTest {
     assertTrue(create.denied(), "create-collection needs solr:admin: " + create.body());
   }
 
-  /** Requesting the admin scope must unlock admin tools without implying read. */
+  /**
+   * A caller holding the {@code solr-admin} role that requests {@code solr:admin} must reach admin
+   * tools. The realm grants {@code solr:read} to every token by default, so "admin does not imply
+   * read" cannot be shown end to end here; {@link MethodSecurityEnforcementTest} covers it.
+   */
   @Test
-  void adminScopeUnlocksAdminToolsAndDoesNotImplyRead() throws Exception {
-    String token = accessToken("solr:admin");
-    assertFalse(scopesOf(token).contains("solr:write"), "only the requested scopes are granted");
+  void adminScopeUnlocksAdminTools() throws Exception {
+    String token = serviceToken("solr:admin");
+    assertTrue(scopesOf(token).contains("solr:admin"), "solr:admin was requested: " + token);
+    assertFalse(
+        scopesOf(token).contains("solr:write"),
+        "solr:write was not requested, so it must not be granted");
 
     ToolResult create = callTool(token, "create-collection", "{\"name\":\"scope_allowed\"}");
     assertFalse(create.denied(), "solr:admin must pass the gate: " + create.body());
+  }
+
+  /**
+   * Optional client scopes only limit what a client asks for. Without role scope mappings Keycloak
+   * grants an optional scope to any user who requests it, so a user without the {@code solr-admin}
+   * role could otherwise mint an admin token through the public client.
+   */
+  @Test
+  void userWithoutAdminRoleCannotSelfGrantAdminScope() throws Exception {
+    String token = userToken("solr:read solr:write solr:admin");
+    assertTrue(scopesOf(token).contains("solr:read"), "solr:read is a default scope: " + token);
+    assertFalse(
+        scopesOf(token).contains("solr:admin"),
+        "testuser lacks the solr-admin role, so solr:admin must not be granted");
+    assertFalse(
+        scopesOf(token).contains("solr:write"),
+        "testuser lacks the solr-writer role, so solr:write must not be granted");
+
+    ToolResult create = callTool(token, "create-collection", "{\"name\":\"scope_self_grant\"}");
+    assertTrue(create.denied(), "create-collection needs solr:admin: " + create.body());
   }
 
   @Test
@@ -170,9 +197,25 @@ class KeycloakScopeEnforcementIntegrationTest {
     }
   }
 
-  private static String accessToken(String extraScopes) throws Exception {
+  /**
+   * Client-credentials token for the confidential client, whose service account holds both roles.
+   */
+  private static String serviceToken(String extraScopes) throws Exception {
+    return token(
+        "grant_type=client_credentials&client_id=solr-mcp-service&client_secret=dev-only-not-a-secret",
+        extraScopes);
+  }
+
+  /** Password-grant token for {@code testuser}, who holds no solr roles, via the public client. */
+  private static String userToken(String extraScopes) throws Exception {
+    return token(
+        "grant_type=password&client_id=solr-mcp-client&username=testuser&password=testpassword",
+        extraScopes);
+  }
+
+  private static String token(String grant, String extraScopes) throws Exception {
     String form =
-        "grant_type=client_credentials&client_id=solr-mcp-service&client_secret=dev-only-not-a-secret"
+        grant
             + (extraScopes.isEmpty()
                 ? ""
                 : "&scope=" + URLEncoder.encode(extraScopes, StandardCharsets.UTF_8));

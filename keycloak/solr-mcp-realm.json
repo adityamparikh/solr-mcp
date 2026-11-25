@@ -56,6 +56,32 @@
     "basic",
     "solr:read"
   ],
+  "roles": {
+    "realm": [
+      {
+        "name": "solr-writer",
+        "description": "May receive the solr:write scope (document indexing)"
+      },
+      {
+        "name": "solr-admin",
+        "description": "May receive the solr:admin scope (collections, aliases, schema changes)"
+      }
+    ]
+  },
+  "scopeMappings": [
+    {
+      "clientScope": "solr:write",
+      "roles": [
+        "solr-writer"
+      ]
+    },
+    {
+      "clientScope": "solr:admin",
+      "roles": [
+        "solr-admin"
+      ]
+    }
+  ],
   "clients": [
     {
       "clientId": "solr-mcp-service",
@@ -139,6 +165,15 @@
           "value": "testpassword",
           "temporary": false
         }
+      ]
+    },
+    {
+      "username": "service-account-solr-mcp-service",
+      "enabled": true,
+      "serviceAccountClientId": "solr-mcp-service",
+      "realmRoles": [
+        "solr-writer",
+        "solr-admin"
       ]
     }
   ],
