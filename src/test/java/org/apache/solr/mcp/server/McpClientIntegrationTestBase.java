@@ -244,10 +244,13 @@ public abstract class McpClientIntegrationTestBase {
 
     assertNotNull(result);
     assertNotError(result);
-    String text = extractText(result);
-    assertTrue(
-        text.contains("true") || text.contains("healthy"), "Collection should be healthy: " + text);
-    assertTrue(text.contains("5"), "Should report 5 documents: " + text);
+    Map<String, Object> health =
+        OBJECT_MAPPER.readValue(extractText(result), new TypeReference<>() {});
+    assertEquals(
+        Boolean.TRUE, health.get("healthy"), () -> "Collection should be healthy: " + health);
+    assertEquals(5, ((Number) health.get("numDocs")).intValue(), () -> "5 documents: " + health);
+    assertFalse(
+        health.containsKey("reason"), () -> "A healthy collection has no reason: " + health);
   }
 
   @Test
@@ -1000,7 +1003,7 @@ public abstract class McpClientIntegrationTestBase {
     assertNotNull(result);
     assertNotError(result);
     String text = extractText(result);
-    // Stats response is a JSON-serialized SolrMetrics. The indexStats.numDocs
+    // Stats response is a JSON-serialized CollectionMetrics. The index.numDocs
     // field carries the count.
     assertTrue(
         text.contains(String.valueOf(SHOWS_DOC_COUNT)),
