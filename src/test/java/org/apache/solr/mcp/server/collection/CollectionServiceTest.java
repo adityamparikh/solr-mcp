@@ -420,7 +420,7 @@ class CollectionServiceTest {
 
     NamedList<Object> metricsResponse =
         wrapInMetricsResponse(createCacheCoreMetrics(), "test_collection");
-    when(solrClient.request(argThat(r -> r instanceof GenericSolrRequest)))
+    when(solrClient.request(argThat(request -> request instanceof GenericSolrRequest)))
         .thenReturn(metricsResponse);
 
     SolrMetrics result = collectionService.getCollectionStats("test_collection");
@@ -433,7 +433,7 @@ class CollectionServiceTest {
     // Exactly one metrics call (combined cache+handler prefixes), no
     // list-collections pre-flight, and exactly one Luke request.
     verify(solrClient, never()).request(any(CollectionAdminRequest.List.class), any());
-    verify(solrClient, times(1)).request(argThat(r -> r instanceof GenericSolrRequest));
+    verify(solrClient, times(1)).request(argThat(request -> request instanceof GenericSolrRequest));
     ArgumentCaptor<LukeRequest> luke = ArgumentCaptor.forClass(LukeRequest.class);
     verify(solrClient).request(luke.capture(), eq("test_collection"));
     assertEquals(
@@ -1094,7 +1094,7 @@ class CollectionServiceTest {
     CollectionService spyService = spy(collectionService);
     List<String> many =
         IntStream.range(0, CollectionService.MAX_COMPLETION_RESULTS + 25)
-            .mapToObj(i -> String.format("c%04d", i))
+            .mapToObj(index -> String.format("c%04d", index))
             .toList();
     doReturn(many).when(spyService).listCollections();
 

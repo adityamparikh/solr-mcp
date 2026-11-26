@@ -360,7 +360,7 @@ public class CollectionService {
     String prefix = argument.value().toLowerCase(Locale.ROOT);
     try {
       return listCollections().stream()
-          .filter(c -> c.toLowerCase(Locale.ROOT).startsWith(prefix))
+          .filter(name -> name.toLowerCase(Locale.ROOT).startsWith(prefix))
           .sorted()
           .limit(MAX_COMPLETION_RESULTS)
           .toList();

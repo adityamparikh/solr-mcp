@@ -214,12 +214,18 @@ class SchemaServiceIntegrationTest {
     CollectionSchema schema = schemaService.getSchema(TEST_COLLECTION);
 
     CollectionSchema.Field id =
-        schema.fields().stream().filter(f -> "id".equals(f.name())).findFirst().orElseThrow();
+        schema.fields().stream()
+            .filter(field -> "id".equals(field.name()))
+            .findFirst()
+            .orElseThrow();
     CollectionSchema.Field root =
-        schema.fields().stream().filter(f -> "_root_".equals(f.name())).findFirst().orElseThrow();
+        schema.fields().stream()
+            .filter(field -> "_root_".equals(field.name()))
+            .findFirst()
+            .orElseThrow();
     CollectionSchema.FieldType strings =
         schema.fieldTypes().stream()
-            .filter(t -> "strings".equals(t.name()))
+            .filter(fieldType -> "strings".equals(fieldType.name()))
             .findFirst()
             .orElseThrow();
 
@@ -282,17 +288,17 @@ class SchemaServiceIntegrationTest {
     CollectionSchema schema = schemaService.getSchema(TEST_COLLECTION);
     CollectionSchema.Field title =
         schema.fields().stream()
-            .filter(f -> "addf_title".equals(f.name()))
+            .filter(field -> "addf_title".equals(field.name()))
             .findFirst()
             .orElseThrow();
     CollectionSchema.Field platform =
         schema.fields().stream()
-            .filter(f -> "addf_platform".equals(f.name()))
+            .filter(field -> "addf_platform".equals(field.name()))
             .findFirst()
             .orElseThrow();
     CollectionSchema.Field year =
         schema.fields().stream()
-            .filter(f -> "addf_year".equals(f.name()))
+            .filter(field -> "addf_year".equals(field.name()))
             .findFirst()
             .orElseThrow();
 
@@ -368,7 +374,7 @@ class SchemaServiceIntegrationTest {
     CollectionSchema schema = schemaService.getSchema(TEST_COLLECTION);
     CollectionSchema.FieldType vt =
         schema.fieldTypes().stream()
-            .filter(t -> "aft_test_vector".equals(t.name()))
+            .filter(fieldType -> "aft_test_vector".equals(fieldType.name()))
             .findFirst()
             .orElseThrow();
 

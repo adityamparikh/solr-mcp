@@ -77,7 +77,7 @@ class ConferenceEndToEndIntegrationTest {
     List<String> collections = collectionService.listCollections();
     boolean found =
         collections.contains(COLLECTION)
-            || collections.stream().anyMatch(c -> c.startsWith(COLLECTION + "_shard"));
+            || collections.stream().anyMatch(name -> name.startsWith(COLLECTION + "_shard"));
     assertTrue(found, "conferences collection should be listed, found: " + collections);
   }
 

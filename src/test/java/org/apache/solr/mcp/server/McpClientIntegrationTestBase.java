@@ -27,6 +27,7 @@ import io.modelcontextprotocol.spec.McpSchema.CompleteResult;
 import io.modelcontextprotocol.spec.McpSchema.Content;
 import io.modelcontextprotocol.spec.McpSchema.GetPromptRequest;
 import io.modelcontextprotocol.spec.McpSchema.GetPromptResult;
+import io.modelcontextprotocol.spec.McpSchema.Prompt;
 import io.modelcontextprotocol.spec.McpSchema.PromptMessage;
 import io.modelcontextprotocol.spec.McpSchema.PromptReference;
 import io.modelcontextprotocol.spec.McpSchema.ReadResourceRequest;
@@ -111,7 +112,7 @@ public abstract class McpClientIntegrationTestBase {
   void listToolsReturnsExpectedTools() {
     var toolsResult = mcpClient.listTools();
     assertNotNull(toolsResult);
-    List<String> toolNames = toolsResult.tools().stream().map(t -> t.name()).toList();
+    List<String> toolNames = toolsResult.tools().stream().map(Tool::name).toList();
 
     assertTrue(toolNames.contains("create-collection"), "Should have create-collection tool");
     assertTrue(toolNames.contains("index-json-documents"), "Should have index-json-documents tool");
@@ -363,7 +364,7 @@ public abstract class McpClientIntegrationTestBase {
     Map<?, ?> id =
         fields.stream()
             .map(Map.class::cast)
-            .filter(f -> "id".equals(f.get("name")))
+            .filter(field -> "id".equals(field.get("name")))
             .findFirst()
             .orElseThrow();
     // flags are SolrJ FieldFlag constant names, not Luke legend text ("I - Indexed")
@@ -373,7 +374,7 @@ public abstract class McpClientIntegrationTestBase {
         ((List<?>) schema.get("fieldTypes"))
             .stream()
                 .map(Map.class::cast)
-                .filter(t -> "text_general".equals(t.get("name")))
+                .filter(fieldType -> "text_general".equals(fieldType.get("name")))
                 .findFirst()
                 .orElseThrow();
     assertEquals("solr.TextField", textGeneral.get("class"), text);
@@ -771,7 +772,7 @@ public abstract class McpClientIntegrationTestBase {
 
     List<Map<String, Object>> fieldsToAdd =
         desiredFields.stream()
-            .filter(f -> !existingFieldNames.contains(String.valueOf(f.get("name"))))
+            .filter(field -> !existingFieldNames.contains(String.valueOf(field.get("name"))))
             .toList();
 
     // Edge case: every desired field already exists in the shared configset
@@ -1011,7 +1012,7 @@ public abstract class McpClientIntegrationTestBase {
   void listPromptsReturnsExpectedPrompts() {
     var promptsResult = mcpClient.listPrompts();
     assertNotNull(promptsResult);
-    List<String> promptNames = promptsResult.prompts().stream().map(p -> p.name()).toList();
+    List<String> promptNames = promptsResult.prompts().stream().map(Prompt::name).toList();
 
     for (String expected :
         List.of(

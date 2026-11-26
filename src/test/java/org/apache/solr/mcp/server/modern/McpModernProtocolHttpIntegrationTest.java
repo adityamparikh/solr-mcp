@@ -133,7 +133,7 @@ class McpModernProtocolHttpIntegrationTest {
   void toolsListKeepsEveryToolAndItsHints() throws Exception {
     List<Map<String, Object>> tools =
         (List<Map<String, Object>>) call("tools/list", Map.of(), null).get("tools");
-    List<Object> names = tools.stream().map(t -> t.get("name")).toList();
+    List<Object> names = tools.stream().map(tool -> tool.get("name")).toList();
 
     for (String tool :
         List.of(
@@ -150,7 +150,7 @@ class McpModernProtocolHttpIntegrationTest {
       assertTrue(names.contains(tool), () -> "missing tool " + tool + " in " + names);
     }
     Map<String, Object> search =
-        tools.stream().filter(t -> "search".equals(t.get("name"))).findFirst().orElseThrow();
+        tools.stream().filter(tool -> "search".equals(tool.get("name"))).findFirst().orElseThrow();
     assertEquals(
         Boolean.TRUE,
         ((Map<String, Object>) search.get("annotations")).get("readOnlyHint"),
@@ -198,14 +198,16 @@ class McpModernProtocolHttpIntegrationTest {
   void resourcesAndTemplatesAreReadable() throws Exception {
     List<Map<String, Object>> resources =
         (List<Map<String, Object>>) call("resources/list", Map.of(), null).get("resources");
-    assertTrue(resources.stream().anyMatch(r -> "solr://collections".equals(r.get("uri"))));
+    assertTrue(
+        resources.stream().anyMatch(resource -> "solr://collections".equals(resource.get("uri"))));
 
     List<Map<String, Object>> templates =
         (List<Map<String, Object>>)
             call("resources/templates/list", Map.of(), null).get("resourceTemplates");
     assertTrue(
         templates.stream()
-            .anyMatch(t -> "solr://{collection}/schema".equals(t.get("uriTemplate"))));
+            .anyMatch(
+                template -> "solr://{collection}/schema".equals(template.get("uriTemplate"))));
 
     String schemaUri = "solr://" + COLLECTION + "/schema";
     List<Map<String, Object>> contents =
@@ -222,7 +224,7 @@ class McpModernProtocolHttpIntegrationTest {
   void promptsAndCompletionsWork() throws Exception {
     List<Map<String, Object>> prompts =
         (List<Map<String, Object>>) call("prompts/list", Map.of(), null).get("prompts");
-    assertTrue(prompts.stream().anyMatch(p -> "search-collection".equals(p.get("name"))));
+    assertTrue(prompts.stream().anyMatch(prompt -> "search-collection".equals(prompt.get("name"))));
 
     Map<String, Object> prompt =
         call(
