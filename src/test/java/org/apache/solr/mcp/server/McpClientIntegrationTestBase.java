@@ -37,6 +37,7 @@ import io.modelcontextprotocol.spec.McpSchema.TextResourceContents;
 import io.modelcontextprotocol.spec.McpSchema.Tool;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -403,10 +404,7 @@ public abstract class McpClientIntegrationTestBase {
     String text = extractText(result);
 
     Map<String, Object> response = OBJECT_MAPPER.readValue(text, new TypeReference<>() {});
-    @SuppressWarnings("unchecked")
-    Map<String, Object> facets = (Map<String, Object>) response.get("facets");
-    assertNotNull(facets, "Should have facets in response");
-    assertTrue(facets.containsKey("id"), "Should have id facet");
+    assertFalse(getFacetCounts(response, "id").isEmpty(), "Should have id facet values: " + text);
   }
 
   @Test
@@ -874,13 +872,7 @@ public abstract class McpClientIntegrationTestBase {
     Map<String, Object> response =
         OBJECT_MAPPER.readValue(extractText(result), new TypeReference<>() {});
 
-    @SuppressWarnings("unchecked")
-    Map<String, Object> facets = (Map<String, Object>) response.get("facets");
-    assertNotNull(facets, "Response should contain facets: " + response);
-
-    @SuppressWarnings("unchecked")
-    Map<String, Object> platformFacet = (Map<String, Object>) facets.get("platform");
-    assertNotNull(platformFacet, "facets.platform should be present: " + facets);
+    Map<String, Number> platformFacet = getFacetCounts(response, "platform");
 
     // The dataset has 20 Netflix shows and 20 Amazon Prime Video shows.
     Object netflixCount = platformFacet.get("Netflix");
@@ -1251,9 +1243,7 @@ public abstract class McpClientIntegrationTestBase {
     Map<String, Object> response =
         OBJECT_MAPPER.readValue(extractText(result), new TypeReference<>() {});
     assertEquals(SHOWS_DOC_COUNT, getNumFound(response));
-    Map<?, ?> facets = (Map<?, ?>) response.get("facets");
-    Map<?, ?> platforms = (Map<?, ?>) facets.get("platform");
-    assertEquals(20, ((Number) platforms.get("Netflix")).intValue());
+    assertEquals(20, getFacetCounts(response, "platform").get("Netflix").intValue());
   }
 
   @Test
@@ -1358,11 +1348,15 @@ public abstract class McpClientIntegrationTestBase {
         OBJECT_MAPPER.readValue(extractText(result), new TypeReference<>() {});
     // "Fallout" has "post-apocalyptic" in its description.
     assertTrue(getNumFound(response) >= 1, "Should find an apocalyptic show: " + response);
-    for (Object document : (List<?>) response.get("documents")) {
+    // The uniqueKey is returned as id even though fields left it out; score sits beside it.
+    for (Map<String, Object> hit : getDocuments(response)) {
+      assertEquals(Set.of("id", "score", "fields"), hit.keySet(), "hit shape: " + hit);
+      assertInstanceOf(String.class, hit.get("id"), "id is the uniqueKey as a string: " + hit);
+      assertInstanceOf(Number.class, hit.get("score"), "score is a number: " + hit);
       assertEquals(
-          Set.of("title", "score"),
-          ((Map<?, ?>) document).keySet(),
-          "fields must limit each document to title plus score: " + document);
+          Set.of("title"),
+          ((Map<?, ?>) hit.get("fields")).keySet(),
+          "fields must limit each hit to title: " + hit);
     }
   }
 
@@ -1428,6 +1422,26 @@ public abstract class McpClientIntegrationTestBase {
     Object value = response.get("numFound");
     assertNotNull(value, "numFound should be present in response");
     return ((Number) value).intValue();
+  }
+
+  /**
+   * Reads one field's facet counts from a search response, as value to count in Solr's order. Fails
+   * when the field is not among the facets.
+   */
+  @SuppressWarnings("unchecked")
+  protected static Map<String, Number> getFacetCounts(Map<String, Object> response, String field) {
+    Object facets = response.get("facets");
+    assertInstanceOf(List.class, facets, "facets should be a list: " + response);
+    for (Map<String, Object> facet : (List<Map<String, Object>>) facets) {
+      if (field.equals(facet.get("field"))) {
+        Map<String, Number> counts = new LinkedHashMap<>();
+        for (Map<String, Object> value : (List<Map<String, Object>>) facet.get("values")) {
+          counts.put((String) value.get("value"), (Number) value.get("count"));
+        }
+        return counts;
+      }
+    }
+    return fail("facet " + field + " should be present: " + facets);
   }
 
   @SuppressWarnings("unchecked")
