@@ -37,6 +37,7 @@ import org.apache.solr.common.util.ContentStreamBase;
 import org.apache.solr.mcp.server.indexing.documentcreator.IndexingDocumentCreator;
 import org.apache.solr.mcp.server.util.PromptNames;
 import org.apache.solr.mcp.server.util.PromptText;
+import org.apache.solr.mcp.server.util.SecurityExpressions;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -111,6 +112,9 @@ import org.springframework.stereotype.Service;
 @Observed
 public class IndexingService {
 
+  /** The description of the {@code collection} parameter of every indexing tool. */
+  private static final String COLLECTION_PARAM_DESCRIPTION = "Solr collection to index into";
+
   private static final Logger logger = LoggerFactory.getLogger(IndexingService.class);
 
   /** SolrJ client for communicating with Solr server */
@@ -179,7 +183,7 @@ public class IndexingService {
    * @see IndexingDocumentCreator#createSchemalessDocumentsFromJson(List)
    * @see #indexDocuments(String, List)
    */
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize(SecurityExpressions.AUTHENTICATED)
   @McpTool(
       name = "index-json-documents",
       annotations = @McpTool.McpAnnotations(idempotentHint = true),
@@ -189,7 +193,7 @@ public class IndexingService {
               + " Pass the array itself, not a JSON string. Field names are used as given; the response"
               + " lists the field names as indexed")
   public String indexJsonDocuments(
-      @McpToolParam(description = "Solr collection to index into") String collection,
+      @McpToolParam(description = COLLECTION_PARAM_DESCRIPTION) String collection,
       @McpToolParam(description = "Documents to index: a JSON array with one object per document")
           List<Map<String, Object>> documents)
       throws IOException, SolrServerException {
@@ -218,7 +222,7 @@ public class IndexingService {
    * @throws IOException if communication with Solr fails
    * @throws SolrServerException if Solr rejects the payload
    */
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize(SecurityExpressions.AUTHENTICATED)
   @McpTool(
       name = "index-csv-documents",
       annotations = @McpTool.McpAnnotations(idempotentHint = true),
@@ -227,7 +231,7 @@ public class IndexingService {
               + " is the header and its column names are used as the field names, as given; repeat a column name"
               + " to make that field multi-valued; empty cells are skipped")
   public String indexCsvDocuments(
-      @McpToolParam(description = "Solr collection to index into") String collection,
+      @McpToolParam(description = COLLECTION_PARAM_DESCRIPTION) String collection,
       @McpToolParam(description = "CSV string containing documents to index") String csv)
       throws IOException, SolrServerException {
     ContentStreamUpdateRequest request = new ContentStreamUpdateRequest("/update");
@@ -249,7 +253,7 @@ public class IndexingService {
    * @throws IOException if communication with Solr fails
    * @throws SolrServerException if Solr rejects the payload
    */
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize(SecurityExpressions.AUTHENTICATED)
   @McpTool(
       name = "index-xml-documents",
       annotations = @McpTool.McpAnnotations(idempotentHint = true),
@@ -259,7 +263,7 @@ public class IndexingService {
               + " multi-valued fields. Only <add> blocks are accepted; delete and commit commands are rejected."
               + " Field names are used as given")
   public String indexXmlDocuments(
-      @McpToolParam(description = "Solr collection to index into") String collection,
+      @McpToolParam(description = COLLECTION_PARAM_DESCRIPTION) String collection,
       @McpToolParam(description = "Solr update XML: an <add> block of <doc> elements") String xml)
       throws IOException, SolrServerException {
     SolrUpdateXml.requireAddBlock(xml);
@@ -340,7 +344,7 @@ public class IndexingService {
    * @see IndexingDocumentCreator#createSchemalessDocumentsFromMarkdown(String)
    * @see #indexDocuments(String, List)
    */
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize(SecurityExpressions.AUTHENTICATED)
   @McpTool(
       name = "index-markdown-documents",
       annotations = @McpTool.McpAnnotations(idempotentHint = true),
@@ -350,7 +354,7 @@ public class IndexingService {
               + "Do NOT use for JSON/CSV/XML input; use index-json-documents, index-csv-documents, or index-xml-documents instead. "
               + "Only convert source content to markdown when there is no dedicated tool for the source format, and supply a stable 'id' in the YAML front matter when doing so.")
   public String indexMarkdownDocuments(
-      @McpToolParam(description = "Solr collection to index into") String collection,
+      @McpToolParam(description = COLLECTION_PARAM_DESCRIPTION) String collection,
       @McpToolParam(
               description =
                   "Markdown documents to index, one string per document, each optionally starting with YAML front matter")
@@ -491,14 +495,17 @@ public class IndexingService {
    *     may be {@code null} or blank
    * @return the prompt text instructing the model how to index the documents
    */
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize(SecurityExpressions.AUTHENTICATED)
   @McpPrompt(
       name = PromptNames.INDEX_DATA,
       title = "Index documents into a Solr collection",
       description =
           "Guides the assistant through verifying the target schema, picking the right indexing tool for the input format, and confirming the result.")
   public String indexDataPrompt(
-      @McpArg(name = "collection", description = "Target Solr collection name", required = true)
+      @McpArg(
+              name = PromptNames.COLLECTION_ARG,
+              description = PromptNames.COLLECTION_ARG_DESCRIPTION,
+              required = true)
           String collection,
       @McpArg(
               name = "format",

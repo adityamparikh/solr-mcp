@@ -44,6 +44,9 @@ import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.mcp.server.config.SolrConfigurationProperties;
 import org.apache.solr.mcp.server.util.PromptNames;
+import org.apache.solr.mcp.server.util.ResourceUris;
+import org.apache.solr.mcp.server.util.SecurityExpressions;
+import org.apache.solr.mcp.server.util.SolrQueries;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -55,6 +58,7 @@ import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
+import org.springframework.util.MimeTypeUtils;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -136,7 +140,6 @@ public class CollectionService {
   // ========================================
 
   /** Universal Solr query pattern to match all documents in a collection */
-  private static final String ALL_DOCUMENTS_QUERY = "*:*";
 
   /**
    * Matches a SolrCloud shard/replica suffix at the end of a core name, e.g. {@code _shard1} or
@@ -318,12 +321,12 @@ public class CollectionService {
    * @throws IllegalStateException with {@link #COLLECTIONS_RESOURCE_ERROR} if the collections
    *     cannot be listed or serialized
    */
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize(SecurityExpressions.AUTHENTICATED)
   @McpResource(
-      uri = "solr://collections",
+      uri = ResourceUris.COLLECTIONS,
       name = "solr-collections",
       description = "List of all Solr collections available in the cluster",
-      mimeType = "application/json")
+      mimeType = MimeTypeUtils.APPLICATION_JSON_VALUE)
   public String getCollectionsResource() {
     try {
       return objectMapper.writeValueAsString(listCollections());
@@ -351,10 +354,10 @@ public class CollectionService {
    *     CompleteRequest.CompleteArgument#name() name} must be {@code collection}
    * @return matching collection names, capped at {@link #MAX_COMPLETION_RESULTS}
    */
-  @PreAuthorize("isAuthenticated()")
-  @McpComplete(uri = "solr://{collection}/schema")
+  @PreAuthorize(SecurityExpressions.AUTHENTICATED)
+  @McpComplete(uri = ResourceUris.COLLECTION_SCHEMA)
   public List<String> completeCollection(CompleteRequest.CompleteArgument argument) {
-    if (!"collection".equals(argument.name())) {
+    if (!PromptNames.COLLECTION_ARG.equals(argument.name())) {
       return List.of();
     }
     String prefix = argument.value().toLowerCase(Locale.ROOT);
@@ -364,7 +367,10 @@ public class CollectionService {
           .sorted()
           .limit(MAX_COMPLETION_RESULTS)
           .toList();
-    } catch (SolrServerException | IOException _) {
+    } catch (SolrServerException | IOException e) {
+      // A completion is only a typing aid: an unreachable Solr yields no suggestions rather than an
+      // error in the client's input box. Logged at debug because clients ask on every keystroke.
+      logger.debug("Collection completion could not list collections", e);
       return List.of();
     }
   }
@@ -376,8 +382,8 @@ public class CollectionService {
    * @param argument the partial value the client is completing
    * @return matching collection names, capped at {@link #MAX_COMPLETION_RESULTS}
    */
-  @PreAuthorize("isAuthenticated()")
-  @McpComplete(uri = "solr://{collection}/fields")
+  @PreAuthorize(SecurityExpressions.AUTHENTICATED)
+  @McpComplete(uri = ResourceUris.COLLECTION_FIELDS)
   public List<String> completeFieldsResourceCollection(CompleteRequest.CompleteArgument argument) {
     return completeCollection(argument);
   }
@@ -394,7 +400,7 @@ public class CollectionService {
    * @param argument the partial value the client is completing
    * @return matching collection names, capped at {@link #MAX_COMPLETION_RESULTS}
    */
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize(SecurityExpressions.AUTHENTICATED)
   @McpComplete(prompt = PromptNames.SEARCH_COLLECTION)
   public List<String> completeSearchCollectionPromptArg(CompleteRequest.CompleteArgument argument) {
     return completeCollection(argument);
@@ -406,7 +412,7 @@ public class CollectionService {
    * @param argument the partial value the client is completing
    * @return matching collection names, capped at {@link #MAX_COMPLETION_RESULTS}
    */
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize(SecurityExpressions.AUTHENTICATED)
   @McpComplete(prompt = PromptNames.INDEX_DATA)
   public List<String> completeIndexDataPromptArg(CompleteRequest.CompleteArgument argument) {
     return completeCollection(argument);
@@ -418,7 +424,7 @@ public class CollectionService {
    * @param argument the partial value the client is completing
    * @return matching collection names, capped at {@link #MAX_COMPLETION_RESULTS}
    */
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize(SecurityExpressions.AUTHENTICATED)
   @McpComplete(prompt = PromptNames.VIEW_SCHEMA)
   public List<String> completeViewSchemaPromptArg(CompleteRequest.CompleteArgument argument) {
     return completeCollection(argument);
@@ -430,7 +436,7 @@ public class CollectionService {
    * @param argument the partial value the client is completing
    * @return matching collection names, capped at {@link #MAX_COMPLETION_RESULTS}
    */
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize(SecurityExpressions.AUTHENTICATED)
   @McpComplete(prompt = PromptNames.DESIGN_SCHEMA)
   public List<String> completeDesignSchemaPromptArg(CompleteRequest.CompleteArgument argument) {
     return completeCollection(argument);
@@ -456,7 +462,7 @@ public class CollectionService {
    * @throws IOException if there are I/O errors during communication
    * @see CollectionAdminRequest.List
    */
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize(SecurityExpressions.AUTHENTICATED)
   @McpTool(
       name = "list-collections",
       annotations = @McpTool.McpAnnotations(readOnlyHint = true),
@@ -514,7 +520,7 @@ public class CollectionService {
    * @see LukeRequest
    * @see #extractCollectionName(String)
    */
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize(SecurityExpressions.AUTHENTICATED)
   @McpTool(
       name = "get-collection-stats",
       annotations = @McpTool.McpAnnotations(readOnlyHint = true),
@@ -547,7 +553,7 @@ public class CollectionService {
 
     // Query performance metrics
     QueryResponse statsResponse =
-        solrClient.query(actualCollection, new SolrQuery(ALL_DOCUMENTS_QUERY).setRows(0));
+        solrClient.query(actualCollection, new SolrQuery(SolrQueries.MATCH_ALL).setRows(0));
 
     // One /admin/metrics call feeds both the cache and handler stats
     NamedList<Object> coreMetrics = fetchMetrics(actualCollection);
@@ -900,7 +906,7 @@ public class CollectionService {
    *   <li><strong>Availability</strong>: Collection responds to ping requests
    *   <li><strong>Performance</strong>: Response time measurement
    *   <li><strong>Content</strong>: Document count verification using universal query ({@value
-   *       #ALL_DOCUMENTS_QUERY})
+   *       SolrQueries#MATCH_ALL})
    *   <li><strong>Timestamp</strong>: When the check was performed
    * </ul>
    *
@@ -926,7 +932,7 @@ public class CollectionService {
    * @see SolrHealthStatus
    * @see SolrPingResponse
    */
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize(SecurityExpressions.AUTHENTICATED)
   @McpTool(
       name = "check-health",
       annotations = @McpTool.McpAnnotations(readOnlyHint = true),
@@ -940,7 +946,7 @@ public class CollectionService {
 
       // Get basic stats
       QueryResponse statsResponse =
-          solrClient.query(actualCollection, new SolrQuery(ALL_DOCUMENTS_QUERY).setRows(0));
+          solrClient.query(actualCollection, new SolrQuery(SolrQueries.MATCH_ALL).setRows(0));
 
       return new SolrHealthStatus(
           true,
@@ -981,7 +987,7 @@ public class CollectionService {
    * @throws SolrServerException if Solr returns an error
    * @throws IOException if there are I/O errors during communication
    */
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize(SecurityExpressions.AUTHENTICATED)
   @McpTool(
       name = "create-collection",
       annotations = @McpTool.McpAnnotations(destructiveHint = false),
@@ -1034,7 +1040,7 @@ public class CollectionService {
    *
    * @return the prompt text instructing the model how to explore collections
    */
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize(SecurityExpressions.AUTHENTICATED)
   @McpPrompt(
       name = PromptNames.EXPLORE_COLLECTIONS,
       title = "Explore Solr collections",
@@ -1075,7 +1081,7 @@ public class CollectionService {
    *     or blank
    * @return the prompt text instructing the model how to set up the collection
    */
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize(SecurityExpressions.AUTHENTICATED)
   @McpPrompt(
       name = PromptNames.SETUP_COLLECTION,
       title = "Set up a new Solr collection",

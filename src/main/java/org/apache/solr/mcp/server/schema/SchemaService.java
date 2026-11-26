@@ -32,6 +32,8 @@ import org.apache.solr.client.solrj.request.schema.FieldTypeDefinition;
 import org.apache.solr.client.solrj.request.schema.SchemaRequest;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.mcp.server.util.PromptNames;
+import org.apache.solr.mcp.server.util.ResourceUris;
+import org.apache.solr.mcp.server.util.SecurityExpressions;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,6 +44,7 @@ import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
+import org.springframework.util.MimeTypeUtils;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -171,13 +174,13 @@ public class SchemaService {
    * @throws IllegalStateException with {@link #SCHEMA_RESOURCE_ERROR} if the schema cannot be
    *     retrieved or serialized
    */
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize(SecurityExpressions.AUTHENTICATED)
   @McpResource(
-      uri = "solr://{collection}/schema",
+      uri = ResourceUris.COLLECTION_SCHEMA,
       name = "solr-collection-schema",
       description =
           "Full schema definition for a Solr collection: field types, declared fields, dynamic-field patterns and copy fields",
-      mimeType = "application/json")
+      mimeType = MimeTypeUtils.APPLICATION_JSON_VALUE)
   public String getSchemaResource(String collection) {
     try {
       return objectMapper.writeValueAsString(getSchema(collection));
@@ -252,7 +255,7 @@ public class SchemaService {
    * @see CollectionSchema
    * @see SchemaRequest
    */
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize(SecurityExpressions.AUTHENTICATED)
   @McpTool(
       name = "get-schema",
       annotations = @McpTool.McpAnnotations(readOnlyHint = true),
@@ -280,13 +283,13 @@ public class SchemaService {
    * @throws IllegalStateException with {@link #FIELDS_RESOURCE_ERROR} if the fields cannot be
    *     listed or serialized
    */
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize(SecurityExpressions.AUTHENTICATED)
   @McpResource(
-      uri = "solr://{collection}/fields",
+      uri = ResourceUris.COLLECTION_FIELDS,
       name = "solr-collection-fields",
       description =
           "The fields that hold data in a Solr collection, with their types, flags and document counts",
-      mimeType = "application/json")
+      mimeType = MimeTypeUtils.APPLICATION_JSON_VALUE)
   public String getFieldsResource(String collection) {
     try {
       return objectMapper.writeValueAsString(listFields(collection));
@@ -320,7 +323,7 @@ public class SchemaService {
    *     SolrException}
    * @throws IOException if communication with Solr fails
    */
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize(SecurityExpressions.AUTHENTICATED)
   @McpTool(
       name = "list-fields",
       annotations = @McpTool.McpAnnotations(readOnlyHint = true),
@@ -364,7 +367,7 @@ public class SchemaService {
    * @throws SolrServerException if there are errors communicating with Solr
    * @throws IOException if there are I/O errors during communication
    */
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize(SecurityExpressions.AUTHENTICATED)
   @McpTool(
       name = "add-fields",
       annotations = @McpTool.McpAnnotations(destructiveHint = false),
@@ -407,7 +410,7 @@ public class SchemaService {
    * @throws SolrServerException if there are errors communicating with Solr
    * @throws IOException if there are I/O errors during communication
    */
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize(SecurityExpressions.AUTHENTICATED)
   @McpTool(
       name = "add-field-types",
       annotations = @McpTool.McpAnnotations(destructiveHint = false),
@@ -561,14 +564,17 @@ public class SchemaService {
    * @param collection target Solr collection name
    * @return the prompt text instructing the model how to inspect the schema
    */
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize(SecurityExpressions.AUTHENTICATED)
   @McpPrompt(
       name = PromptNames.VIEW_SCHEMA,
       title = "View a Solr collection schema",
       description =
           "Read-only walkthrough: fetch the schema and summarize fields, types, dynamic fields, copy fields, and the unique key.")
   public String viewSchemaPrompt(
-      @McpArg(name = "collection", description = "Target Solr collection name", required = true)
+      @McpArg(
+              name = PromptNames.COLLECTION_ARG,
+              description = PromptNames.COLLECTION_ARG_DESCRIPTION,
+              required = true)
           String collection) {
     return """
 				You are inspecting the schema of Solr collection `%s`. This prompt is read-only; do not
@@ -618,14 +624,17 @@ public class SchemaService {
    *     null} or blank
    * @return the prompt text instructing the model how to design the schema
    */
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize(SecurityExpressions.AUTHENTICATED)
   @McpPrompt(
       name = PromptNames.DESIGN_SCHEMA,
       title = "Design a Solr schema for a dataset",
       description =
           "Guides the assistant through inspecting an existing Solr schema, choosing appropriate field types, and applying additive schema changes via the Schema API.")
   public String designSchemaPrompt(
-      @McpArg(name = "collection", description = "Target Solr collection name", required = true)
+      @McpArg(
+              name = PromptNames.COLLECTION_ARG,
+              description = PromptNames.COLLECTION_ARG_DESCRIPTION,
+              required = true)
           String collection,
       @McpArg(
               name = "datasetDescription",

@@ -34,6 +34,8 @@ import org.apache.solr.common.params.DisMaxParams;
 import org.apache.solr.common.params.FacetParams;
 import org.apache.solr.common.util.JsonTextWriter;
 import org.apache.solr.mcp.server.util.PromptNames;
+import org.apache.solr.mcp.server.util.SecurityExpressions;
+import org.apache.solr.mcp.server.util.SolrQueries;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -233,7 +235,7 @@ public class SearchService {
    * @throws SolrServerException If there's an error communicating with Solr
    * @throws IOException If there's an I/O error
    */
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize(SecurityExpressions.AUTHENTICATED)
   public SearchResponse search(
       String collection,
       @Nullable String query,
@@ -270,7 +272,7 @@ public class SearchService {
    * @throws SolrServerException If there's an error communicating with Solr
    * @throws IOException If there's an I/O error
    */
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize(SecurityExpressions.AUTHENTICATED)
   // @formatter:off — keep this @McpTool wrapped like the others; the text block disguises the real
   // line length.
   @McpTool(
@@ -333,7 +335,7 @@ public class SearchService {
       throws SolrServerException, IOException {
 
     // query
-    final SolrQuery solrQuery = new SolrQuery("*:*");
+    final SolrQuery solrQuery = new SolrQuery(SolrQueries.MATCH_ALL);
     // Facet counts are a NamedList that Solr writes as a flat ["term", 5, ...] array by
     // default; map style writes it as an object, which JsonResponseParser reads as a NamedList.
     solrQuery.set(JsonTextWriter.JSON_NL_STYLE, JsonTextWriter.JSON_NL_MAP);
@@ -509,14 +511,17 @@ public class SearchService {
    * @param question the user's natural-language search question or information need
    * @return the prompt text instructing the model how to run the search
    */
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize(SecurityExpressions.AUTHENTICATED)
   @McpPrompt(
       name = PromptNames.SEARCH_COLLECTION,
       title = "Search a Solr collection from a natural-language question",
       description =
           "Guides the assistant through inspecting the schema, translating a user question into a Solr query, running the search, and refining the result.")
   public String searchCollectionPrompt(
-      @McpArg(name = "collection", description = "Target Solr collection name", required = true)
+      @McpArg(
+              name = PromptNames.COLLECTION_ARG,
+              description = PromptNames.COLLECTION_ARG_DESCRIPTION,
+              required = true)
           String collection,
       @McpArg(
               name = "question",
