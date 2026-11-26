@@ -188,7 +188,9 @@ class McpModernProtocolHttpIntegrationTest {
             "documentsIndexed",
             3,
             "fieldNames",
-            List.of("category", "id", "title")),
+            List.of("category", "id", "title"),
+            "fieldCount",
+            3),
         parse(indexedText),
         indexedText);
 
