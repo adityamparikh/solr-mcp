@@ -170,7 +170,7 @@ class MethodSecurityEnforcementTest {
       call.execute();
     } catch (AccessDeniedException e) {
       throw new AssertionError(message, e);
-    } catch (Throwable ignoredSolrFailure) {
+    } catch (Throwable _) {
       // The gate passed; the downstream Solr outcome is not what this test is about.
     }
   }
