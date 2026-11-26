@@ -35,14 +35,17 @@ import java.util.Base64;
 import org.apache.solr.mcp.server.TestcontainersConfiguration;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistrar;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.MountableFile;
 import tools.jackson.databind.JsonNode;
@@ -92,33 +95,62 @@ class KeycloakScopeEnforcementIntegrationTest {
 
   private static final int SERVER_PORT = freePort();
 
-  @Container
-  static final GenericContainer<?> KEYCLOAK =
-      new GenericContainer<>(KEYCLOAK_IMAGE)
-          .withEnv("KC_BOOTSTRAP_ADMIN_USERNAME", "admin")
-          .withEnv("KC_BOOTSTRAP_ADMIN_PASSWORD", "admin")
-          .withCopyFileToContainer(
-              MountableFile.forHostPath(realmWithAudienceFor(SERVER_PORT), REALM_FILE_MODE),
-              "/opt/keycloak/data/import/solr-mcp-realm.json")
-          .withCommand("start-dev", "--import-realm")
-          .withExposedPorts(KEYCLOAK_PORT)
-          .waitingFor(
-              Wait.forHttp("/realms/solr-mcp/.well-known/openid-configuration")
-                  .forPort(KEYCLOAK_PORT)
-                  .withStartupTimeout(Duration.ofMinutes(3)));
+  private static final String ISSUER_URI_PROPERTY =
+      "spring.security.oauth2.resourceserver.jwt.issuer-uri";
 
   @DynamicPropertySource
-  static void securedServer(DynamicPropertyRegistry registry) {
+  static void serverPort(DynamicPropertyRegistry registry) {
     registry.add("server.port", () -> SERVER_PORT);
-    registry.add("spring.security.oauth2.resourceserver.jwt.issuer-uri", () -> issuerUri());
   }
 
-  private static String issuerUri() {
-    return "http://"
-        + KEYCLOAK.getHost()
-        + ":"
-        + KEYCLOAK.getMappedPort(KEYCLOAK_PORT)
-        + "/realms/solr-mcp";
+  @Autowired private KeycloakContainer keycloak;
+
+  /**
+   * Keycloak as a container bean, the same pattern as {@link TestcontainersConfiguration}'s Solr.
+   *
+   * <p>Test AOT ({@code processTestAot}) refreshes the context for AOT processing, which evaluates
+   * conditions but starts no containers. A {@code @DynamicPropertySource} supplier is read by those
+   * conditions (Boot's {@code IssuerUriCondition} reads the issuer URI), so a supplier asking an
+   * unstarted container for its mapped port fails the build. A {@link DynamicPropertyRegistrar}
+   * bean only runs before singleton pre-instantiation, after conditions, by which point Spring Boot
+   * has started the container bean it depends on, so the issuer is reachable when the filter chain
+   * builds its JWT decoder.
+   */
+  @TestConfiguration(proxyBeanMethods = false)
+  static class KeycloakConfiguration {
+
+    @Bean
+    KeycloakContainer keycloak() {
+      return new KeycloakContainer(realmWithAudienceFor(SERVER_PORT));
+    }
+
+    @Bean
+    DynamicPropertyRegistrar keycloakIssuerRegistrar(KeycloakContainer keycloak) {
+      return registry -> registry.add(ISSUER_URI_PROPERTY, keycloak::issuerUri);
+    }
+  }
+
+  /** The shipped Keycloak image, importing the given realm file at startup. */
+  static final class KeycloakContainer extends GenericContainer<KeycloakContainer> {
+
+    KeycloakContainer(Path realm) {
+      super(KEYCLOAK_IMAGE);
+      withEnv("KC_BOOTSTRAP_ADMIN_USERNAME", "admin");
+      withEnv("KC_BOOTSTRAP_ADMIN_PASSWORD", "admin");
+      withCopyFileToContainer(
+          MountableFile.forHostPath(realm, REALM_FILE_MODE),
+          "/opt/keycloak/data/import/solr-mcp-realm.json");
+      withCommand("start-dev", "--import-realm");
+      withExposedPorts(KEYCLOAK_PORT);
+      waitingFor(
+          Wait.forHttp("/realms/solr-mcp/.well-known/openid-configuration")
+              .forPort(KEYCLOAK_PORT)
+              .withStartupTimeout(Duration.ofMinutes(3)));
+    }
+
+    String issuerUri() {
+      return "http://" + getHost() + ":" + getMappedPort(KEYCLOAK_PORT) + "/realms/solr-mcp";
+    }
   }
 
   /** A token carrying only the default scope must reach read tools and be refused admin tools. */
@@ -200,27 +232,27 @@ class KeycloakScopeEnforcementIntegrationTest {
   /**
    * Client-credentials token for the confidential client, whose service account holds both roles.
    */
-  private static String serviceToken(String extraScopes) throws Exception {
+  private String serviceToken(String extraScopes) throws Exception {
     return token(
         "grant_type=client_credentials&client_id=solr-mcp-service&client_secret=dev-only-not-a-secret",
         extraScopes);
   }
 
   /** Password-grant token for {@code testuser}, who holds no solr roles, via the public client. */
-  private static String userToken(String extraScopes) throws Exception {
+  private String userToken(String extraScopes) throws Exception {
     return token(
         "grant_type=password&client_id=solr-mcp-client&username=testuser&password=testpassword",
         extraScopes);
   }
 
-  private static String token(String grant, String extraScopes) throws Exception {
+  private String token(String grant, String extraScopes) throws Exception {
     String form =
         grant
             + (extraScopes.isEmpty()
                 ? ""
                 : "&scope=" + URLEncoder.encode(extraScopes, StandardCharsets.UTF_8));
     HttpRequest request =
-        HttpRequest.newBuilder(URI.create(issuerUri() + "/protocol/openid-connect/token"))
+        HttpRequest.newBuilder(URI.create(keycloak.issuerUri() + "/protocol/openid-connect/token"))
             .header("Content-Type", "application/x-www-form-urlencoded")
             .POST(HttpRequest.BodyPublishers.ofString(form))
             .build();
