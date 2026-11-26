@@ -64,6 +64,8 @@ class SolrNativeHints implements RuntimeHintsRegistrar {
           "org.apache.solr.mcp.server.collection.CacheInfo",
           "org.apache.solr.mcp.server.collection.HandlerStats",
           "org.apache.solr.mcp.server.collection.HandlerInfo",
+          "org.apache.solr.mcp.server.indexing.IndexingResult",
+          "org.apache.solr.mcp.server.indexing.IndexingResult$Format",
           "org.apache.solr.mcp.server.search.SearchResponse",
           "org.apache.solr.mcp.server.search.SortClause",
           "org.apache.solr.mcp.server.schema.SchemaUpdateResult",

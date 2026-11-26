@@ -86,6 +86,23 @@ class SolrNativeHintsTest {
   }
 
   @Test
+  void registersIndexingResultHints() {
+    for (String type :
+        List.of(
+            "org.apache.solr.mcp.server.indexing.IndexingResult",
+            "org.apache.solr.mcp.server.indexing.IndexingResult$Format")) {
+      assertTrue(
+          RuntimeHintsPredicates.reflection()
+              .onType(TypeReference.of(type))
+              .withMemberCategories(
+                  MemberCategory.INVOKE_DECLARED_CONSTRUCTORS,
+                  MemberCategory.INVOKE_DECLARED_METHODS)
+              .test(hints),
+          type);
+    }
+  }
+
+  @Test
   void registersCollectionSchemaRecordHints() {
     // Jackson builds these from Solr's response (constructors) and writes the catch-all
     // back out through its @JsonAnyGetter accessor (methods), so both are needed.
