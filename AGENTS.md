@@ -326,8 +326,8 @@ buildpacks (`bootBuildImage -Pnative`). Key configuration:
   - **MCP tool response records** (invisible to AOT because the MCP framework uses
     generic `Object` dispatch): `AliasResult`, `CollectionCreationResult`,
     `SolrHealthStatus`, `SolrMetrics`, `IndexStats`, `QueryStats`, `CacheStats`,
-    `CacheInfo`, `HandlerStats`, `HandlerInfo`, `SearchResponse`, `SortClause`,
-    `SchemaUpdateResult`, `CollectionSchema` and `FieldListing` and their nested records
+    `CacheInfo`, `HandlerStats`, `HandlerInfo`, `SearchResponse` and its nested
+    `SearchHit`, `FacetField` and `FacetValue`, `SortClause`, `SchemaUpdateResult`, `CollectionSchema` and `FieldListing` and their nested records
   - **Spring AI**: `org.springframework.ai.mcp.annotation.context.DefaultMetaProvider`,
     which `MetaUtils` instantiates reflectively
   - **Resources**: `logback-spring.xml` (see Logging Architecture above), and SolrJ's
