@@ -139,8 +139,6 @@ public class CollectionService {
   // Constants for API Parameters and Paths
   // ========================================
 
-  /** Universal Solr query pattern to match all documents in a collection */
-
   /**
    * Matches a SolrCloud shard/replica suffix at the end of a core name, e.g. {@code _shard1} or
    * {@code _shard1_replica_n1}. Anchored so that collection names merely containing "_shard" are
