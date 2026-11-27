@@ -53,7 +53,7 @@ import org.jspecify.annotations.Nullable;
  * @see org.apache.solr.common.util.NamedList
  * @see CollectionService
  */
-public class CollectionUtils {
+public final class CollectionUtils {
 
   private CollectionUtils() {
     // Utility class — prevent instantiation
