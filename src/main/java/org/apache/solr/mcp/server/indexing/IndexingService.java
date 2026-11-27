@@ -20,6 +20,7 @@ import io.micrometer.observation.annotation.Observed;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -459,7 +460,7 @@ public class IndexingService {
   private record IndexTool(String format, String name, String paramName, String payload) {}
 
   private static IndexTool resolveIndexTool(String format) {
-    String normalized = format.trim().toLowerCase();
+    String normalized = format.trim().toLowerCase(Locale.ROOT);
     return switch (normalized) {
       case "json" ->
           new IndexTool(
