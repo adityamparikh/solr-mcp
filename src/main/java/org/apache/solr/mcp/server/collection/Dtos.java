@@ -41,12 +41,13 @@ import org.jspecify.annotations.Nullable;
  *
  * <pre>{@code
  * SolrMetrics metrics = collectionService.getCollectionStats("my_collection");
- * System.out.println("Documents: " + metrics.getIndexStats().getNumDocs());
+ * Integer numDocs = metrics.indexStats().numDocs();
  *
- * // Safe null checking for optional metrics
- * if (metrics.getCacheStats() != null && metrics.getCacheStats().getQueryResultCache() != null) {
- * 	System.out.println("Cache hit ratio: " + metrics.getCacheStats().getQueryResultCache().getHitratio());
- * }
+ * // cacheStats and its entries are optional
+ * Float hitRatio = Optional.ofNullable(metrics.cacheStats())
+ *     .map(CacheStats::queryResultCache)
+ *     .map(CacheInfo::hitratio)
+ *     .orElse(null);
  * }</pre>
  *
  * @param indexStats Index-related statistics including document counts and segment information
