@@ -28,7 +28,6 @@ import org.apache.solr.mcp.server.collection.CollectionService;
 import org.apache.solr.mcp.server.indexing.IndexingService;
 import org.apache.solr.mcp.server.schema.SchemaService;
 import org.apache.solr.mcp.server.search.SearchService;
-import org.apache.solr.mcp.server.util.PromptNames;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.mcp.annotation.McpComplete;
 import org.springframework.ai.mcp.annotation.McpPrompt;
@@ -252,16 +251,16 @@ class McpToolRegistrationTest {
         "One resource-template completion expected per collection-scoped resource");
 
     // One prompt binding per prompt that takes a `collection` argument.
-    // Referenced via PromptNames so a rename or deletion breaks compilation
+    // Referenced via the owning services' constants so a rename or deletion breaks compilation
     // here, not silently at runtime.
     List<String> promptBindings =
         completions.stream().map(McpComplete::prompt).filter(s -> !s.isEmpty()).sorted().toList();
     assertEquals(
         Stream.of(
-                PromptNames.DESIGN_SCHEMA,
-                PromptNames.INDEX_DATA,
-                PromptNames.SEARCH_COLLECTION,
-                PromptNames.VIEW_SCHEMA)
+                SchemaService.DESIGN_SCHEMA_PROMPT,
+                IndexingService.INDEX_DATA_PROMPT,
+                SearchService.SEARCH_COLLECTION_PROMPT,
+                SchemaService.VIEW_SCHEMA_PROMPT)
             .sorted()
             .toList(),
         promptBindings,

@@ -43,7 +43,9 @@ import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.mcp.server.config.SolrConfigurationProperties;
-import org.apache.solr.mcp.server.util.PromptNames;
+import org.apache.solr.mcp.server.indexing.IndexingService;
+import org.apache.solr.mcp.server.schema.SchemaService;
+import org.apache.solr.mcp.server.search.SearchService;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -126,6 +128,10 @@ import tools.jackson.databind.json.JsonMapper;
 public class CollectionService {
 
   private static final Logger logger = LoggerFactory.getLogger(CollectionService.class);
+
+  private static final String EXPLORE_COLLECTIONS_PROMPT = "explore-collections";
+
+  private static final String SETUP_COLLECTION_PROMPT = "setup-collection";
 
   static final String COLLECTIONS_RESOURCE_ERROR =
       "Failed to list Solr collections. Retry later; if it persists,"
@@ -395,7 +401,7 @@ public class CollectionService {
    * @return matching collection names, capped at {@link #MAX_COMPLETION_RESULTS}
    */
   @PreAuthorize("isAuthenticated()")
-  @McpComplete(prompt = PromptNames.SEARCH_COLLECTION)
+  @McpComplete(prompt = SearchService.SEARCH_COLLECTION_PROMPT)
   public List<String> completeSearchCollectionPromptArg(CompleteRequest.CompleteArgument argument) {
     return completeCollection(argument);
   }
@@ -407,7 +413,7 @@ public class CollectionService {
    * @return matching collection names, capped at {@link #MAX_COMPLETION_RESULTS}
    */
   @PreAuthorize("isAuthenticated()")
-  @McpComplete(prompt = PromptNames.INDEX_DATA)
+  @McpComplete(prompt = IndexingService.INDEX_DATA_PROMPT)
   public List<String> completeIndexDataPromptArg(CompleteRequest.CompleteArgument argument) {
     return completeCollection(argument);
   }
@@ -419,7 +425,7 @@ public class CollectionService {
    * @return matching collection names, capped at {@link #MAX_COMPLETION_RESULTS}
    */
   @PreAuthorize("isAuthenticated()")
-  @McpComplete(prompt = PromptNames.VIEW_SCHEMA)
+  @McpComplete(prompt = SchemaService.VIEW_SCHEMA_PROMPT)
   public List<String> completeViewSchemaPromptArg(CompleteRequest.CompleteArgument argument) {
     return completeCollection(argument);
   }
@@ -431,7 +437,7 @@ public class CollectionService {
    * @return matching collection names, capped at {@link #MAX_COMPLETION_RESULTS}
    */
   @PreAuthorize("isAuthenticated()")
-  @McpComplete(prompt = PromptNames.DESIGN_SCHEMA)
+  @McpComplete(prompt = SchemaService.DESIGN_SCHEMA_PROMPT)
   public List<String> completeDesignSchemaPromptArg(CompleteRequest.CompleteArgument argument) {
     return completeCollection(argument);
   }
@@ -1036,7 +1042,7 @@ public class CollectionService {
    */
   @PreAuthorize("isAuthenticated()")
   @McpPrompt(
-      name = PromptNames.EXPLORE_COLLECTIONS,
+      name = EXPLORE_COLLECTIONS_PROMPT,
       title = "Explore Solr collections",
       description =
           "Read-only walkthrough: list collections and characterise each by stats and health.")
@@ -1077,7 +1083,7 @@ public class CollectionService {
    */
   @PreAuthorize("isAuthenticated()")
   @McpPrompt(
-      name = PromptNames.SETUP_COLLECTION,
+      name = SETUP_COLLECTION_PROMPT,
       title = "Set up a new Solr collection",
       description =
           "Guided workflow: validate a name, pick configset / shards / replication factor, create the collection, and verify it.")

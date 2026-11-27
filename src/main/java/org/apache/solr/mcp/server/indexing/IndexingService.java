@@ -35,8 +35,6 @@ import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.util.ContentStreamBase;
 import org.apache.solr.mcp.server.indexing.documentcreator.IndexingDocumentCreator;
-import org.apache.solr.mcp.server.util.PromptNames;
-import org.apache.solr.mcp.server.util.PromptText;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -112,6 +110,13 @@ import org.springframework.stereotype.Service;
 public class IndexingService {
 
   private static final Logger logger = LoggerFactory.getLogger(IndexingService.class);
+
+  /**
+   * Name of the {@code index-data} prompt. Public because {@code CollectionService} binds its
+   * {@code @McpComplete} handler to this name, and MCP matches the two by exact string, so both
+   * sides must reference this constant.
+   */
+  public static final String INDEX_DATA_PROMPT = "index-data";
 
   /** SolrJ client for communicating with Solr server */
   private final SolrClient solrClient;
@@ -493,7 +498,7 @@ public class IndexingService {
    */
   @PreAuthorize("isAuthenticated()")
   @McpPrompt(
-      name = PromptNames.INDEX_DATA,
+      name = INDEX_DATA_PROMPT,
       title = "Index documents into a Solr collection",
       description =
           "Guides the assistant through verifying the target schema, picking the right indexing tool for the input format, and confirming the result.")
@@ -513,10 +518,9 @@ public class IndexingService {
           @Nullable String sample) {
     IndexTool indexTool = resolveIndexTool(format);
     String sampleSection =
-        PromptText.optionalCodeBlock(
-            sample,
-            "Sample input:",
-            "No sample was provided. If the user has not pasted the documents yet, ask for them (or a representative subset) before indexing.");
+        sample == null || sample.isBlank()
+            ? "   - No sample was provided. If the user has not pasted the documents yet, ask for them (or a representative subset) before indexing."
+            : "   - Sample input:\n\n     ```\n" + sample.strip().indent(5) + "     ```";
     return """
 				You are indexing %s data into collection `%s` via MCP tools. Work incrementally and
 				verify after each step.

@@ -33,7 +33,6 @@ import org.apache.solr.common.SolrException;
 import org.apache.solr.common.params.DisMaxParams;
 import org.apache.solr.common.params.FacetParams;
 import org.apache.solr.common.util.JsonTextWriter;
-import org.apache.solr.mcp.server.util.PromptNames;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -98,6 +97,13 @@ import org.springframework.util.StringUtils;
 public class SearchService {
 
   private static final Logger logger = LoggerFactory.getLogger(SearchService.class);
+
+  /**
+   * Name of the {@code search-collection} prompt. Public because {@code CollectionService} binds
+   * its {@code @McpComplete} handler to this name, and MCP matches the two by exact string, so both
+   * sides must reference this constant.
+   */
+  public static final String SEARCH_COLLECTION_PROMPT = "search-collection";
 
   /**
    * Fragments of Solr's own error text that identify a failure we can advise on.
@@ -511,7 +517,7 @@ public class SearchService {
    */
   @PreAuthorize("isAuthenticated()")
   @McpPrompt(
-      name = PromptNames.SEARCH_COLLECTION,
+      name = SEARCH_COLLECTION_PROMPT,
       title = "Search a Solr collection from a natural-language question",
       description =
           "Guides the assistant through inspecting the schema, translating a user question into a Solr query, running the search, and refining the result.")

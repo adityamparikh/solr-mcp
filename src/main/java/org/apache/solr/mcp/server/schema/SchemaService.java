@@ -16,8 +16,6 @@
  */
 package org.apache.solr.mcp.server.schema;
 
-import static org.apache.solr.mcp.server.util.PromptText.optionalCodeBlock;
-
 import io.micrometer.observation.annotation.Observed;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -31,7 +29,6 @@ import org.apache.solr.client.solrj.request.schema.AnalyzerDefinition;
 import org.apache.solr.client.solrj.request.schema.FieldTypeDefinition;
 import org.apache.solr.client.solrj.request.schema.SchemaRequest;
 import org.apache.solr.common.util.NamedList;
-import org.apache.solr.mcp.server.util.PromptNames;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -119,6 +116,20 @@ import tools.jackson.databind.json.JsonMapper;
 public class SchemaService {
 
   private static final Logger logger = LoggerFactory.getLogger(SchemaService.class);
+
+  /**
+   * Name of the {@code view-schema} prompt. Public because {@code CollectionService} binds its
+   * {@code @McpComplete} handler to this name, and MCP matches the two by exact string, so both
+   * sides must reference this constant.
+   */
+  public static final String VIEW_SCHEMA_PROMPT = "view-schema";
+
+  /**
+   * Name of the {@code design-schema} prompt. Public because {@code CollectionService} binds its
+   * {@code @McpComplete} handler to this name, and MCP matches the two by exact string, so both
+   * sides must reference this constant.
+   */
+  public static final String DESIGN_SCHEMA_PROMPT = "design-schema";
 
   /** The section of a Schema API response that holds the schema. */
   private static final String SCHEMA_SECTION = "schema";
@@ -563,7 +574,7 @@ public class SchemaService {
    */
   @PreAuthorize("isAuthenticated()")
   @McpPrompt(
-      name = PromptNames.VIEW_SCHEMA,
+      name = VIEW_SCHEMA_PROMPT,
       title = "View a Solr collection schema",
       description =
           "Read-only walkthrough: fetch the schema and summarize fields, types, dynamic fields, copy fields, and the unique key.")
@@ -620,7 +631,7 @@ public class SchemaService {
    */
   @PreAuthorize("isAuthenticated()")
   @McpPrompt(
-      name = PromptNames.DESIGN_SCHEMA,
+      name = DESIGN_SCHEMA_PROMPT,
       title = "Design a Solr schema for a dataset",
       description =
           "Guides the assistant through inspecting an existing Solr schema, choosing appropriate field types, and applying additive schema changes via the Schema API.")
@@ -639,10 +650,12 @@ public class SchemaService {
               required = false)
           @Nullable String sampleDocument) {
     String sampleSection =
-        optionalCodeBlock(
-            sampleDocument,
-            "A sample document was provided. Use it as ground truth for field names and value\n     shapes:",
-            "No sample document was provided; ask the user for one if the dataset description leaves field types ambiguous.");
+        sampleDocument == null || sampleDocument.isBlank()
+            ? "   - No sample document was provided; ask the user for one if the dataset description leaves field types ambiguous."
+            : "   - A sample document was provided. Use it as ground truth for field names and value\n"
+                + "     shapes:\n\n     ```\n"
+                + sampleDocument.strip().indent(5)
+                + "     ```";
     return """
 				You are designing a Solr schema for collection `%s`. Dataset:
 
