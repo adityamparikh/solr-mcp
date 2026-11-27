@@ -87,7 +87,8 @@ fixes at build time, so `MCP_PROTOCOL` must be set when the image is built. Sett
 image runs has no effect:
 
 ```bash
-MCP_PROTOCOL=modern ./gradlew bootBuildImage -Pnative -Pprofile=http
+MCP_PROTOCOL=modern ./gradlew bootBuildImage -Pnative -Pprofile=http   # HTTP
+MCP_PROTOCOL=modern ./gradlew bootBuildImage -Pnative                  # STDIO
 ```
 
 To confirm the build picked it up, check that the AOT output contains the modern server:
@@ -96,9 +97,10 @@ To confirm the build picked it up, check that the AOT output contains the modern
 grep -rl McpServerModernAutoConfiguration build/generated/aotSources
 ```
 
-The HTTP native image built this way serves the 2026-07-28 revision, including the
-`@PreAuthorize` scope checks on every tool, resource, prompt and completion. A modern STDIO
-native image has not been tested yet.
+Both images serve the 2026-07-28 revision. The HTTP image enforces the `@PreAuthorize` scope
+checks on every tool, resource, prompt and completion. The STDIO image has no authentication,
+the same as the default STDIO mode. It includes the workaround below, so it answers a request
+sent the moment it starts.
 
 ## Spring AI 2.1 STDIO workaround
 
