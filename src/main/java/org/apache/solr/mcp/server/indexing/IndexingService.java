@@ -20,6 +20,7 @@ import io.micrometer.observation.annotation.Observed;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -98,9 +99,8 @@ import org.springframework.stereotype.Service;
  * String jsonData = "[{\"title\":\"Document 1\",\"content\":\"Content here\"}]";
  * indexingService.indexDocuments("my_collection", jsonData);
  *
- * // Programmatic document creation and indexing
- * List<SolrInputDocument> docs = indexingService.createSchemalessDocuments(jsonData);
- * int successful = indexingService.indexDocuments("my_collection", docs);
+ * // Programmatic indexing of prepared documents
+ * int successful = indexingService.indexDocuments("my_collection", solrDocuments);
  * }</pre>
  *
  * @see SolrInputDocument
@@ -113,10 +113,25 @@ public class IndexingService {
 
   private static final Logger logger = LoggerFactory.getLogger(IndexingService.class);
 
-  /** SolrJ client for communicating with Solr server */
+  private static final String UPDATE_HANDLER_PATH = "/update";
+
+  private static final String CSV_HEADER_PARAM = "header";
+
+  private static final String CSV_CONTENT_TYPE = "text/csv; charset=UTF-8";
+
+  // Soft-commit flags, named so the setAction and commit calls read as what they request.
+  private static final boolean WAIT_FLUSH = false;
+  private static final boolean WAIT_SEARCHER = true;
+  private static final boolean SOFT_COMMIT = true;
+
+  /**
+   * Maximum number of distinct field names listed in an indexing response before the remainder is
+   * elided.
+   */
+  private static final int MAX_REPORTED_FIELDS = 50;
+
   private final SolrClient solrClient;
 
-  /** Service for creating SolrInputDocument objects from various data formats */
   private final IndexingDocumentCreator indexingDocumentCreator;
 
   /**
@@ -193,17 +208,11 @@ public class IndexingService {
       @McpToolParam(description = "Documents to index: a JSON array with one object per document")
           List<Map<String, Object>> documents)
       throws IOException, SolrServerException {
-    List<SolrInputDocument> schemalessDoc =
+    List<SolrInputDocument> solrDocuments =
         indexingDocumentCreator.createSchemalessDocumentsFromJson(documents);
-    int successCount = indexDocuments(collection, schemalessDoc);
-    return "Successfully indexed "
-        + successCount
-        + " of "
-        + schemalessDoc.size()
-        + " documents into collection '"
-        + collection
-        + "'"
-        + describeIndexedFields(schemalessDoc);
+    int successCount = indexDocuments(collection, solrDocuments);
+    return indexedSummary(collection, successCount, solrDocuments.size())
+        + describeIndexedFields(solrDocuments);
   }
 
   /**
@@ -230,9 +239,9 @@ public class IndexingService {
       @McpToolParam(description = "Solr collection to index into") String collection,
       @McpToolParam(description = "CSV string containing documents to index") String csv)
       throws IOException, SolrServerException {
-    ContentStreamUpdateRequest request = new ContentStreamUpdateRequest("/update");
-    request.setParam("header", "true");
-    request.addContentStream(new ContentStreamBase.StringStream(csv, "text/csv; charset=UTF-8"));
+    ContentStreamUpdateRequest request = new ContentStreamUpdateRequest(UPDATE_HANDLER_PATH);
+    request.setParam(CSV_HEADER_PARAM, Boolean.TRUE.toString());
+    request.addContentStream(new ContentStreamBase.StringStream(csv, CSV_CONTENT_TYPE));
     return forward(collection, request, "CSV payload");
   }
 
@@ -263,7 +272,7 @@ public class IndexingService {
       @McpToolParam(description = "Solr update XML: an <add> block of <doc> elements") String xml)
       throws IOException, SolrServerException {
     SolrUpdateXml.requireAddBlock(xml);
-    ContentStreamUpdateRequest request = new ContentStreamUpdateRequest("/update");
+    ContentStreamUpdateRequest request = new ContentStreamUpdateRequest(UPDATE_HANDLER_PATH);
     request.addContentStream(new ContentStreamBase.StringStream(xml, ClientUtils.TEXT_XML));
     return forward(collection, request, "XML <add> block");
   }
@@ -280,8 +289,7 @@ public class IndexingService {
    */
   private String forward(String collection, ContentStreamUpdateRequest request, String payload)
       throws IOException, SolrServerException {
-    request.setAction(AbstractUpdateRequest.ACTION.COMMIT, false, true, true);
-    UpdateResponse response = request.process(solrClient, collection);
+    UpdateResponse response = withSoftCommit(request).process(solrClient, collection);
     return "Solr accepted the "
         + payload
         + " for collection '"
@@ -356,25 +364,27 @@ public class IndexingService {
                   "Markdown documents to index, one string per document, each optionally starting with YAML front matter")
           List<String> documents)
       throws IOException, SolrServerException {
-    List<SolrInputDocument> schemalessDoc = new ArrayList<>();
+    List<SolrInputDocument> solrDocuments = new ArrayList<>();
     for (String markdown : documents) {
-      schemalessDoc.addAll(indexingDocumentCreator.createSchemalessDocumentsFromMarkdown(markdown));
+      solrDocuments.addAll(indexingDocumentCreator.createSchemalessDocumentsFromMarkdown(markdown));
     }
-    int successCount = indexDocuments(collection, schemalessDoc);
-    return "Successfully indexed "
-        + successCount
-        + " of "
-        + schemalessDoc.size()
-        + " documents into collection '"
-        + collection
-        + "'";
+    int successCount = indexDocuments(collection, solrDocuments);
+    return indexedSummary(collection, successCount, solrDocuments.size());
+  }
+
+  private static String indexedSummary(String collection, int successCount, int totalCount) {
+    return "Successfully indexed %d of %d documents into collection '%s'"
+        .formatted(successCount, totalCount, collection);
   }
 
   /**
-   * Maximum number of distinct field names listed in an indexing response before the remainder is
-   * elided.
+   * Requests a soft commit on the update itself: {@code waitSearcher} makes the documents
+   * searchable when the call returns, while the segment fsync is left to Solr's {@code autoCommit}.
    */
-  private static final int MAX_REPORTED_FIELDS = 50;
+  private static <T extends AbstractUpdateRequest> T withSoftCommit(T request) {
+    request.setAction(AbstractUpdateRequest.ACTION.COMMIT, WAIT_FLUSH, WAIT_SEARCHER, SOFT_COMMIT);
+    return request;
+  }
 
   /**
    * Summarizes the field names that were indexed. Nested JSON objects are flattened with
@@ -422,9 +432,8 @@ public class IndexingService {
       throws SolrServerException, IOException {
     UpdateRequest request = new UpdateRequest();
     request.add(documents);
-    request.setAction(AbstractUpdateRequest.ACTION.COMMIT, false, true, true);
     try {
-      request.process(solrClient, collection);
+      withSoftCommit(request).process(solrClient, collection);
       return documents.size();
     } catch (SolrException e) {
       if (e.code() != SolrException.ErrorCode.BAD_REQUEST.code) {
@@ -432,53 +441,82 @@ public class IndexingService {
       }
       logger.warn("Solr rejected the batch, retrying documents individually", e);
     }
+    return indexIndividually(collection, documents);
+  }
 
+  /** Adds each document on its own, skipping the ones Solr rejects, then commits once. */
+  private int indexIndividually(String collection, List<SolrInputDocument> documents)
+      throws SolrServerException, IOException {
     int successCount = 0;
-    for (SolrInputDocument doc : documents) {
+    for (SolrInputDocument document : documents) {
       try {
-        solrClient.add(collection, doc);
+        solrClient.add(collection, document);
         successCount++;
       } catch (SolrException e) {
-        logger.debug("Failed to index individual document", e);
+        logger.debug("Solr rejected an individual document; skipping it", e);
       }
     }
-    solrClient.commit(collection, false, true, true);
+    solrClient.commit(collection, WAIT_FLUSH, WAIT_SEARCHER, SOFT_COMMIT);
     return successCount;
   }
 
   /**
-   * Maps an input-format keyword to the canonical format name, the MCP tool, and the payload
-   * parameter for that format.
-   *
-   * @param format canonical format name, so the prompt reads "markdown" even when the caller passed
-   *     the {@code md} alias
-   * @param name the MCP tool that indexes this format
-   * @param paramName the tool's payload parameter name
-   * @param payload prose describing what to pass for {@code paramName}
+   * The input formats the {@code index-data} prompt can route to, each with the MCP tool that
+   * indexes it and how to pass the payload.
    */
-  private record IndexTool(String format, String name, String paramName, String payload) {}
+  enum IndexTool {
+    JSON(
+        "json",
+        "index-json-documents",
+        "documents",
+        "the documents as a JSON array of objects, not as a string"),
+    CSV("csv", "index-csv-documents", "csv", "the CSV text"),
+    XML("xml", "index-xml-documents", "xml", "the XML text"),
+    MARKDOWN(
+        "markdown",
+        "index-markdown-documents",
+        "documents",
+        "the markdown documents, one string per document, each optionally starting with YAML front matter");
 
-  private static IndexTool resolveIndexTool(String format) {
-    String normalized = format.trim().toLowerCase();
-    return switch (normalized) {
-      case "json" ->
-          new IndexTool(
-              "json",
-              "index-json-documents",
-              "documents",
-              "the documents as a JSON array of objects, not as a string");
-      case "csv" -> new IndexTool("csv", "index-csv-documents", "csv", "the CSV text");
-      case "xml" -> new IndexTool("xml", "index-xml-documents", "xml", "the XML text");
-      case "markdown", "md" ->
-          new IndexTool(
-              "markdown",
-              "index-markdown-documents",
-              "documents",
-              "the markdown documents, one string per document, each optionally starting with YAML front matter");
-      default ->
-          throw new IllegalArgumentException(
-              "format must be one of json/csv/xml/markdown, got: " + format);
-    };
+    /** Accepted alias for {@link #MARKDOWN}. */
+    private static final String MARKDOWN_ALIAS = "md";
+
+    /** Canonical format name, so the prompt reads "markdown" even for the {@code md} alias. */
+    private final String format;
+
+    private final String toolName;
+
+    private final String paramName;
+
+    /** Prose describing what to pass for {@link #paramName}. */
+    private final String payload;
+
+    IndexTool(String format, String toolName, String paramName, String payload) {
+      this.format = format;
+      this.toolName = toolName;
+      this.paramName = paramName;
+      this.payload = payload;
+    }
+
+    /**
+     * Resolves a caller-supplied format keyword, case-insensitively and ignoring surrounding
+     * whitespace.
+     *
+     * @throws IllegalArgumentException if the keyword names no supported format
+     */
+    static IndexTool forFormat(String format) {
+      String normalized = format.trim().toLowerCase(Locale.ROOT);
+      if (MARKDOWN_ALIAS.equals(normalized)) {
+        return MARKDOWN;
+      }
+      for (IndexTool tool : values()) {
+        if (tool.format.equals(normalized)) {
+          return tool;
+        }
+      }
+      throw new IllegalArgumentException(
+          "format must be one of json/csv/xml/markdown, got: " + format);
+    }
   }
 
   /**
@@ -511,7 +549,7 @@ public class IndexingService {
                   "Optional small sample of the input document(s) to ground field-shape decisions",
               required = false)
           @Nullable String sample) {
-    IndexTool indexTool = resolveIndexTool(format);
+    IndexTool indexTool = IndexTool.forFormat(format);
     String sampleSection =
         PromptText.optionalCodeBlock(
             sample,
@@ -549,14 +587,14 @@ public class IndexingService {
 				searching it.
 				"""
         .formatted(
-            indexTool.format(),
+            indexTool.format,
             collection,
             collection,
             sampleSection,
-            indexTool.name(),
+            indexTool.toolName,
             collection,
-            indexTool.paramName(),
-            indexTool.payload(),
+            indexTool.paramName,
+            indexTool.payload,
             collection);
   }
 }
