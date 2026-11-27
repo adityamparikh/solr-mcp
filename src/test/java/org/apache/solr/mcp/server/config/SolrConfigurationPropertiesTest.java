@@ -82,6 +82,24 @@ class SolrConfigurationPropertiesTest {
   }
 
   @Test
+  void toStringRedactsThePassword() {
+    SolrConfigurationProperties properties =
+        new SolrConfigurationProperties("http://localhost:8983/solr/", "solr", "s3cr3t");
+
+    assertThat(properties.toString())
+        .doesNotContain("s3cr3t")
+        .contains("url=http://localhost:8983/solr/", "username=solr", "password=******");
+  }
+
+  @Test
+  void toStringShowsAnUnsetPasswordAsNull() {
+    assertThat(new SolrConfigurationProperties("http://localhost:8983/solr/", null, null))
+        .hasToString(
+            "SolrConfigurationProperties[url=http://localhost:8983/solr/, username=null,"
+                + " password=null]");
+  }
+
+  @Test
   @DisabledInNativeImage
   void bindingFailsAtStartupWhenTheSchemeIsMissing() {
     contextRunner()

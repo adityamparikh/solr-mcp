@@ -129,6 +129,21 @@ public record SolrConfigurationProperties(
   }
 
   /**
+   * Redacts {@link #password()}: the generated record {@code toString} would print it in clear text
+   * wherever the bound properties are logged or shown in a debugger.
+   */
+  @Override
+  public String toString() {
+    return "SolrConfigurationProperties[url="
+        + url
+        + ", username="
+        + username
+        + ", password="
+        + (password == null ? null : "******")
+        + "]";
+  }
+
+  /**
    * The binder hands over whatever was configured, including nothing at all, so this is the one
    * place a null or blank value can arrive.
    */
