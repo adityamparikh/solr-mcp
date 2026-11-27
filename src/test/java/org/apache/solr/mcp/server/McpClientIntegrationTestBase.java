@@ -16,6 +16,7 @@
  */
 package org.apache.solr.mcp.server;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
 
 import io.modelcontextprotocol.client.McpSyncClient;
@@ -51,6 +52,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.TestMethodOrder;
+import org.springframework.test.json.JsonContent;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -358,10 +360,10 @@ public abstract class McpClientIntegrationTestBase {
     assertEquals(1, result.contents().size());
     TextResourceContents contents =
         assertInstanceOf(TextResourceContents.class, result.contents().getFirst());
-    Map<String, Object> status = OBJECT_MAPPER.readValue(contents.text(), new TypeReference<>() {});
-    assertTrue(
-        status.containsKey("live_nodes"),
-        "Cluster status should list live nodes: " + contents.text());
+    assertThat(new JsonContent(contents.text()))
+        .extractingPath("$.live_nodes")
+        .asArray()
+        .isNotEmpty();
   }
 
   @Test
@@ -372,19 +374,14 @@ public abstract class McpClientIntegrationTestBase {
             new CallToolRequest("get-cluster-status", Map.of("collection", COLLECTION)));
 
     assertNotError(result);
-    String text = extractText(result);
-    Map<String, Object> status = OBJECT_MAPPER.readValue(text, new TypeReference<>() {});
+    JsonContent json = new JsonContent(extractText(result));
+    String replicas = "$.collections." + COLLECTION + ".shards.*.replicas.*";
     // Through Spring AI's serialization: Solr's keys, the catch-all merged in rather than
     // emitted as "other", and leader as a boolean rather than Solr's "true" string.
-    assertFalse(status.containsKey("other"), text);
-    Map<?, ?> shards =
-        (Map<?, ?>)
-            ((Map<?, ?>) ((Map<?, ?>) status.get("collections")).get(COLLECTION)).get("shards");
-    Map<?, ?> replicas =
-        (Map<?, ?>) ((Map<?, ?>) shards.values().iterator().next()).get("replicas");
-    Map<?, ?> replica = (Map<?, ?>) replicas.values().iterator().next();
-    assertEquals(Boolean.TRUE, replica.get("leader"), text);
-    assertTrue(replica.containsKey("node_name") && replica.containsKey("base_url"), text);
+    assertThat(json).extractingPath("$..other").asArray().isEmpty();
+    assertThat(json).extractingPath(replicas + ".leader").asArray().contains(true);
+    assertThat(json).extractingPath(replicas + ".node_name").asArray().isNotEmpty();
+    assertThat(json).extractingPath(replicas + ".base_url").asArray().isNotEmpty();
   }
 
   @Test
