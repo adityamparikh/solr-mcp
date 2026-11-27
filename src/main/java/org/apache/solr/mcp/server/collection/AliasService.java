@@ -57,6 +57,9 @@ public class AliasService {
   /** Error message for blank collections validation */
   private static final String BLANK_COLLECTIONS_ERROR = "Collections must not be blank";
 
+  /** The {@code status} Solr reports in a response header when a request succeeded. */
+  private static final int SOLR_SUCCESS_STATUS = 0;
+
   /** SolrJ client for communicating with Solr server */
   private final SolrClient solrClient;
 
@@ -130,17 +133,13 @@ public class AliasService {
           String collections)
       throws SolrServerException, IOException {
 
-    if (aliasName.isBlank()) {
-      throw new IllegalArgumentException(BLANK_ALIAS_NAME_ERROR);
-    }
-    if (collections.isBlank()) {
-      throw new IllegalArgumentException(BLANK_COLLECTIONS_ERROR);
-    }
+    requireNonBlank(aliasName, BLANK_ALIAS_NAME_ERROR);
+    requireNonBlank(collections, BLANK_COLLECTIONS_ERROR);
 
     CollectionAdminRequest.CreateAlias request =
         CollectionAdminRequest.createAlias(aliasName, collections);
     CollectionAdminResponse response = request.process(solrClient);
-    boolean success = response.getStatus() == 0;
+    boolean success = isSuccess(response);
 
     return new AliasResult(
         aliasName,
@@ -176,13 +175,11 @@ public class AliasService {
       @McpToolParam(description = "Name of the alias to delete") String aliasName)
       throws SolrServerException, IOException {
 
-    if (aliasName.isBlank()) {
-      throw new IllegalArgumentException(BLANK_ALIAS_NAME_ERROR);
-    }
+    requireNonBlank(aliasName, BLANK_ALIAS_NAME_ERROR);
 
     CollectionAdminRequest.DeleteAlias request = CollectionAdminRequest.deleteAlias(aliasName);
     CollectionAdminResponse response = request.process(solrClient);
-    boolean success = response.getStatus() == 0;
+    boolean success = isSuccess(response);
 
     return new AliasResult(
         aliasName,
@@ -190,5 +187,15 @@ public class AliasService {
         success,
         success ? "Alias deleted successfully" : "Alias deletion failed",
         new Date());
+  }
+
+  private static void requireNonBlank(String value, String errorMessage) {
+    if (value.isBlank()) {
+      throw new IllegalArgumentException(errorMessage);
+    }
+  }
+
+  private static boolean isSuccess(CollectionAdminResponse response) {
+    return response.getStatus() == SOLR_SUCCESS_STATUS;
   }
 }

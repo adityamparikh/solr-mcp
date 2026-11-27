@@ -24,9 +24,11 @@ import io.micrometer.observation.annotation.Observed;
 import io.modelcontextprotocol.spec.McpSchema.CompleteRequest;
 import java.io.IOException;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.regex.Pattern;
 import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrRequest;
 import org.apache.solr.client.solrj.SolrServerException;
@@ -38,6 +40,7 @@ import org.apache.solr.client.solrj.response.CollectionAdminResponse;
 import org.apache.solr.client.solrj.response.LukeResponse;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.client.solrj.response.SolrPingResponse;
+import org.apache.solr.common.SolrDocumentList;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.params.SolrParams;
@@ -78,13 +81,6 @@ import tools.jackson.databind.json.JsonMapper;
  *   <li><strong>Shard-Aware Operations</strong>: Intelligent handling of SolrCloud shard names and
  *       collection name extraction
  * </ul>
- *
- * <p><strong>Implementation Details:</strong>
- *
- * <p>This class uses extensively documented constants for all API parameters, field names, and
- * paths to ensure maintainability and reduce the risk of typos. All string literals have been
- * replaced with well-named constants that are organized by category (API parameters, response
- * parsing keys, handler paths, statistics fields, etc.).
  *
  * <p><strong>MCP Tool Integration:</strong>
  *
@@ -131,11 +127,12 @@ public class CollectionService {
       "Failed to list Solr collections. Retry later; if it persists,"
           + " ask the operator to check Solr availability and the server logs.";
 
-  // ========================================
-  // Constants for API Parameters and Paths
-  // ========================================
+  /** Maximum number of completion suggestions returned per request. */
+  static final int MAX_COMPLETION_RESULTS = 100;
 
-  /** Universal Solr query pattern to match all documents in a collection */
+  /** The MCP completion argument that holds a collection name. */
+  private static final String COLLECTION_ARGUMENT = "collection";
+
   private static final String ALL_DOCUMENTS_QUERY = "*:*";
 
   /**
@@ -143,117 +140,63 @@ public class CollectionService {
    * {@code _shard1_replica_n1}. Anchored so that collection names merely containing "_shard" are
    * left intact.
    */
-  private static final java.util.regex.Pattern SHARD_SUFFIX_PATTERN =
-      java.util.regex.Pattern.compile("_shard\\d+(_replica.*)?$");
+  private static final Pattern SHARD_SUFFIX_PATTERN = Pattern.compile("_shard\\d+(_replica.*)?$");
 
-  /** Request parameter name for specifying response writer type */
+  // Solr request parameters and paths
+
   private static final String WT_PARAM = "wt";
-
-  /** JSON format specification for response writer type */
   private static final String JSON_FORMAT = "json";
-
-  /** URL path for Solr Metrics admin endpoint */
   private static final String ADMIN_METRICS_PATH = "/admin/metrics";
-
-  /** Request parameter name for specifying the metrics group */
   private static final String GROUP_PARAM = "group";
-
-  /** Request parameter name for filtering metrics by key prefix */
   private static final String PREFIX_PARAM = "prefix";
-
-  /** Metrics group for core-level metrics */
   private static final String CORE_GROUP = "core";
-
-  /** Prefix for cache metrics in the Metrics API */
   private static final String CACHE_METRIC_PREFIX = "CACHE.searcher";
-
-  /** Prefix for select handler metrics in the Metrics API */
   private static final String SELECT_HANDLER_METRIC_PREFIX = "QUERY./select";
-
-  /** Prefix for update handler metrics in the Metrics API */
   private static final String UPDATE_HANDLER_METRIC_PREFIX = "UPDATE./update";
 
-  /** Cache and handler prefixes, comma-separated so one request fetches all */
+  /** Cache and handler prefixes, comma-separated so one request fetches all. */
   private static final String STATS_METRIC_PREFIXES =
       String.join(
           ",", CACHE_METRIC_PREFIX, SELECT_HANDLER_METRIC_PREFIX, UPDATE_HANDLER_METRIC_PREFIX);
 
-  /** Request parameter name for restricting the Luke handler's output sections */
+  /** Luke parameter restricting the handler's output sections; SolrJ has no setter for it. */
   private static final String SHOW_PARAM = "show";
 
-  /** Luke {@value #SHOW_PARAM} value restricting output to the index section */
   private static final String SHOW_INDEX_VALUE = "index";
 
-  // ========================================
-  // Constants for Response Parsing
-  // ========================================
+  // Response keys
 
-  /** Key name for collections list in Collections API responses */
   private static final String COLLECTIONS_KEY = "collections";
-
-  /** Key name for segment count information in Luke response */
   private static final String SEGMENT_COUNT_KEY = "segmentCount";
-
-  /** Top-level key in Metrics API responses */
   private static final String METRICS_KEY = "metrics";
 
-  /** Metrics API key for query result cache */
+  /** Metrics registries of a core are keyed {@code solr.core.<collection>.<shard>.<replica>}. */
+  private static final String CORE_REGISTRY_PREFIX = "solr.core.";
+
   private static final String QUERY_RESULT_CACHE_KEY = "CACHE.searcher.queryResultCache";
-
-  /** Metrics API key for document cache */
   private static final String DOCUMENT_CACHE_KEY = "CACHE.searcher.documentCache";
-
-  /** Metrics API key for filter cache */
   private static final String FILTER_CACHE_KEY = "CACHE.searcher.filterCache";
 
-  /** Flat metric key prefix for select handler stats */
+  /** Handler metrics are flat keys, e.g. {@code QUERY./select.requests}. */
   private static final String SELECT_HANDLER_KEY = "QUERY./select.";
 
-  /** Flat metric key prefix for update handler stats */
   private static final String UPDATE_HANDLER_KEY = "UPDATE./update.";
 
-  // ========================================
-  // Constants for Statistics Field Names
-  // ========================================
+  // Cache and handler statistics fields
 
-  /** Field name for cache/handler lookup count statistics */
   private static final String LOOKUPS_FIELD = "lookups";
-
-  /** Field name for cache hit count statistics */
   private static final String HITS_FIELD = "hits";
-
-  /** Field name for cache hit ratio statistics */
   private static final String HITRATIO_FIELD = "hitratio";
-
-  /** Field name for cache insert count statistics */
   private static final String INSERTS_FIELD = "inserts";
-
-  /** Field name for cache eviction count statistics */
   private static final String EVICTIONS_FIELD = "evictions";
-
-  /** Field name for cache size statistics */
   private static final String SIZE_FIELD = "size";
-
-  /** Field name for handler request count statistics */
   private static final String REQUESTS_FIELD = "requests";
-
-  /** Field name for handler error count statistics */
   private static final String ERRORS_FIELD = "errors";
-
-  /** Field name for handler timeout count statistics */
   private static final String TIMEOUTS_FIELD = "timeouts";
-
-  /** Field name for handler total processing time statistics */
   private static final String TOTAL_TIME_FIELD = "totalTime";
 
-  // ========================================
-  // Constants for Error Messages
-  // ========================================
+  // Collection creation
 
-  /** Error message prefix for collection not found exceptions */
-  private static final String COLLECTION_NOT_FOUND_ERROR = "Collection not found: ";
-
-  /** Default configset name used when none is specified */
   private static final String DEFAULT_CONFIGSET = "_default";
 
   /**
@@ -264,16 +207,17 @@ public class CollectionService {
    */
   private static final String AUTOCREATED_SUFFIX = ".AUTOCREATED";
 
-  /** Default number of shards for new collections */
   private static final int DEFAULT_NUM_SHARDS = 1;
-
-  /** Default replication factor for new collections */
   private static final int DEFAULT_REPLICATION_FACTOR = 1;
+  private static final String COLLECTION_CREATED_MESSAGE = "Collection created successfully";
 
-  /** Error message for blank collection name validation */
+  // Error messages
+
+  private static final String COLLECTION_NOT_FOUND_ERROR_FORMAT =
+      "Collection not found: %s. Hint: call list-collections to see available collections.";
+
   private static final String BLANK_COLLECTION_NAME_ERROR = "Collection name must not be blank";
 
-  /** SolrJ client for communicating with Solr server */
   private final SolrClient solrClient;
 
   private final JsonMapper objectMapper;
@@ -295,20 +239,6 @@ public class CollectionService {
   }
 
   /**
-   * A {@link LukeRequest} for the {@code index} section only, which is all {@link
-   * #buildIndexStats(LukeResponse)} reads. Without {@code show=index} Solr also lists every field;
-   * SolrJ has no setter for it.
-   */
-  private static final class IndexOnlyLukeRequest extends LukeRequest {
-    @Override
-    public SolrParams getParams() {
-      ModifiableSolrParams params = new ModifiableSolrParams(super.getParams());
-      params.set(SHOW_PARAM, SHOW_INDEX_VALUE);
-      return params;
-    }
-  }
-
-  /**
    * MCP Resource endpoint that returns a list of all available Solr collections.
    *
    * <p>This resource provides a simple way for MCP clients to discover what collections are
@@ -327,7 +257,7 @@ public class CollectionService {
   public String getCollectionsResource() {
     try {
       return objectMapper.writeValueAsString(listCollections());
-    } catch (Exception e) {
+    } catch (SolrServerException | IOException | RuntimeException e) {
       // Deliberately no cause: MCP reports the root cause's message to the client,
       // and Solr and SolrJ failure text can carry internal host names, URLs and
       // paths. The log is the sole record of the cause.
@@ -335,9 +265,6 @@ public class CollectionService {
       throw new IllegalStateException(COLLECTIONS_RESOURCE_ERROR);
     }
   }
-
-  /** Maximum number of completion suggestions returned per request. */
-  static final int MAX_COMPLETION_RESULTS = 100;
 
   /**
    * MCP Completion endpoint for the {@code {collection}} segment of the {@code
@@ -354,17 +281,19 @@ public class CollectionService {
   @PreAuthorize("isAuthenticated()")
   @McpComplete(uri = "solr://{collection}/schema")
   public List<String> completeCollection(CompleteRequest.CompleteArgument argument) {
-    if (!"collection".equals(argument.name())) {
+    if (!COLLECTION_ARGUMENT.equals(argument.name())) {
       return List.of();
     }
     String prefix = argument.value().toLowerCase(Locale.ROOT);
     try {
       return listCollections().stream()
-          .filter(c -> c.toLowerCase(Locale.ROOT).startsWith(prefix))
+          .filter(name -> name.toLowerCase(Locale.ROOT).startsWith(prefix))
           .sorted()
           .limit(MAX_COMPLETION_RESULTS)
           .toList();
-    } catch (SolrServerException | IOException _) {
+    } catch (SolrServerException | IOException e) {
+      // Completion is a convenience: an unreachable Solr yields no suggestions, not an error.
+      logger.debug("Collection-name completion unavailable", e);
       return List.of();
     }
   }
@@ -462,12 +391,11 @@ public class CollectionService {
       annotations = @McpTool.McpAnnotations(readOnlyHint = true),
       description = "List solr collections")
   public List<String> listCollections() throws SolrServerException, IOException {
-    CollectionAdminRequest.List request = new CollectionAdminRequest.List();
-    CollectionAdminResponse response = request.process(solrClient);
+    CollectionAdminResponse response = new CollectionAdminRequest.List().process(solrClient);
 
     @SuppressWarnings("unchecked")
     List<String> collections = (List<String>) response.getResponse().get(COLLECTIONS_KEY);
-    return collections != null ? collections : new ArrayList<>();
+    return collections != null ? collections : List.of();
   }
 
   /**
@@ -527,28 +455,9 @@ public class CollectionService {
   public SolrMetrics getCollectionStats(
       @McpToolParam(description = "Solr collection to get stats/metrics for") String collection)
       throws SolrServerException, IOException {
-    // Extract actual collection name from shard name if needed
     String actualCollection = extractCollectionName(collection);
-
-    // Index statistics using Luke; an unknown collection 404s here
-    LukeResponse lukeResponse;
-    try {
-      lukeResponse = new IndexOnlyLukeRequest().process(solrClient, actualCollection);
-    } catch (SolrException e) {
-      if (e.code() == SolrException.ErrorCode.NOT_FOUND.code) {
-        throw new IllegalArgumentException(
-            COLLECTION_NOT_FOUND_ERROR
-                + actualCollection
-                + ". Hint: call list-collections to see available collections.",
-            e);
-      }
-      throw e;
-    }
-
-    // Query performance metrics
-    QueryResponse statsResponse =
-        solrClient.query(actualCollection, new SolrQuery(ALL_DOCUMENTS_QUERY).setRows(0));
-
+    LukeResponse lukeResponse = requestIndexInfo(actualCollection);
+    QueryResponse statsResponse = queryAllDocuments(actualCollection);
     // One /admin/metrics call feeds both the cache and handler stats
     NamedList<Object> coreMetrics = fetchMetrics(actualCollection);
     return new SolrMetrics(
@@ -557,6 +466,28 @@ public class CollectionService {
         cacheStats(coreMetrics),
         handlerStats(coreMetrics),
         Instant.now());
+  }
+
+  /**
+   * Reads the index section of the Luke handler. This doubles as the existence check: an unknown
+   * collection 404s here, which is translated into an {@link IllegalArgumentException}.
+   */
+  private LukeResponse requestIndexInfo(String collection) throws SolrServerException, IOException {
+    try {
+      return new IndexOnlyLukeRequest().process(solrClient, collection);
+    } catch (SolrException e) {
+      if (e.code() == SolrException.ErrorCode.NOT_FOUND.code) {
+        throw new IllegalArgumentException(
+            COLLECTION_NOT_FOUND_ERROR_FORMAT.formatted(collection), e);
+      }
+      throw e;
+    }
+  }
+
+  /** Runs a zero-row match-all query, for its timing and total document count. */
+  private QueryResponse queryAllDocuments(String collection)
+      throws SolrServerException, IOException {
+    return solrClient.query(collection, new SolrQuery(ALL_DOCUMENTS_QUERY).setRows(0));
   }
 
   /**
@@ -584,11 +515,7 @@ public class CollectionService {
    * @see LukeResponse
    */
   IndexStats buildIndexStats(LukeResponse lukeResponse) {
-    NamedList<Object> indexInfo = lukeResponse.getIndexInfo();
-
-    // Extract index information using helper methods
-    Integer segmentCount = getInteger(indexInfo, SEGMENT_COUNT_KEY);
-
+    Integer segmentCount = getInteger(lukeResponse.getIndexInfo(), SEGMENT_COUNT_KEY);
     return new IndexStats(lukeResponse.getNumDocs(), segmentCount);
   }
 
@@ -619,12 +546,9 @@ public class CollectionService {
    * @see QueryResponse
    */
   QueryStats buildQueryStats(QueryResponse response) {
-
+    SolrDocumentList results = response.getResults();
     return new QueryStats(
-        response.getQTime(),
-        response.getResults().getNumFound(),
-        response.getResults().getStart(),
-        response.getResults().getMaxScore());
+        response.getQTime(), results.getNumFound(), results.getStart(), results.getMaxScore());
   }
 
   /**
@@ -796,39 +720,39 @@ public class CollectionService {
    * @param collection the collection name
    * @return the core-level metrics NamedList, or null if unavailable
    */
-  @SuppressWarnings("unchecked")
   private @Nullable NamedList<Object> fetchMetrics(String collection) {
-    ModifiableSolrParams params = new ModifiableSolrParams();
-    params.set(GROUP_PARAM, CORE_GROUP);
-    params.set(PREFIX_PARAM, STATS_METRIC_PREFIXES);
-    params.set(WT_PARAM, JSON_FORMAT);
-
-    // Metrics API is a node-level endpoint, not per-collection
-    GenericSolrRequest request =
-        new GenericSolrRequest(SolrRequest.METHOD.GET, ADMIN_METRICS_PATH, params);
-
     NamedList<?> response;
     try {
-      response = solrClient.request(request);
+      response = solrClient.request(buildMetricsRequest());
     } catch (SolrServerException | IOException | SolrException e) {
       logger.debug("Cache/handler metrics unavailable for collection: {}", collection, e);
       return null;
     }
     NamedList<?> metrics = (NamedList<?>) response.get(METRICS_KEY);
-    if (metrics == null || metrics.size() == 0) {
-      return null;
-    }
+    return metrics == null ? null : findCoreRegistry(metrics, collection).orElse(null);
+  }
 
-    // Find the core registry matching the requested collection
-    // Keys are like "solr.core.<collection>.<shard>.<replica>"
-    String corePrefix = "solr.core." + collection + ".";
+  /** The Metrics API is a node-level endpoint, so the request is not bound to a collection. */
+  private static GenericSolrRequest buildMetricsRequest() {
+    ModifiableSolrParams params = new ModifiableSolrParams();
+    params.set(GROUP_PARAM, CORE_GROUP);
+    params.set(PREFIX_PARAM, STATS_METRIC_PREFIXES);
+    params.set(WT_PARAM, JSON_FORMAT);
+    return new GenericSolrRequest(SolrRequest.METHOD.GET, ADMIN_METRICS_PATH, params);
+  }
+
+  /** Finds the first core registry belonging to {@code collection} in a node's metrics. */
+  @SuppressWarnings("unchecked")
+  private static Optional<NamedList<Object>> findCoreRegistry(
+      NamedList<?> metrics, String collection) {
+    String corePrefix = CORE_REGISTRY_PREFIX + collection + ".";
     for (int i = 0; i < metrics.size(); i++) {
       String key = metrics.getName(i);
       if (key != null && key.startsWith(corePrefix)) {
-        return (NamedList<Object>) metrics.getVal(i);
+        return Optional.ofNullable((NamedList<Object>) metrics.getVal(i));
       }
     }
-    return null;
+    return Optional.empty();
   }
 
   /**
@@ -935,13 +859,8 @@ public class CollectionService {
       @McpToolParam(description = "Solr collection") String collection) {
     String actualCollection = extractCollectionName(collection);
     try {
-      // Ping Solr
       SolrPingResponse pingResponse = solrClient.ping(actualCollection);
-
-      // Get basic stats
-      QueryResponse statsResponse =
-          solrClient.query(actualCollection, new SolrQuery(ALL_DOCUMENTS_QUERY).setRows(0));
-
+      QueryResponse statsResponse = queryAllDocuments(actualCollection);
       return new SolrHealthStatus(
           true,
           null,
@@ -949,8 +868,8 @@ public class CollectionService {
           statsResponse.getResults().getNumFound(),
           Instant.now(),
           actualCollection);
-
-    } catch (Exception e) {
+    } catch (SolrServerException | IOException | RuntimeException e) {
+      // Any failure means "unhealthy": the tool reports it rather than throwing.
       logger.warn("Health check failed for collection: {}", collection, e);
       return new SolrHealthStatus(
           false, e.getMessage(), null, null, Instant.now(), actualCollection);
@@ -1008,24 +927,30 @@ public class CollectionService {
       throw new IllegalArgumentException(BLANK_COLLECTION_NAME_ERROR);
     }
 
-    int effectiveShards = numShards != null ? numShards : DEFAULT_NUM_SHARDS;
-    int effectiveRf = replicationFactor != null ? replicationFactor : DEFAULT_REPLICATION_FACTOR;
+    int shards = Objects.requireNonNullElse(numShards, DEFAULT_NUM_SHARDS);
+    int replicas = Objects.requireNonNullElse(replicationFactor, DEFAULT_REPLICATION_FACTOR);
+    Optional<String> sharedConfigSet = sharedConfigSet(configSet);
 
-    String effectiveConfigSet;
-    CollectionAdminRequest.Create request;
-    if (configSet == null || configSet.isBlank() || configSet.equals(DEFAULT_CONFIGSET)) {
-      // No collection.configName: Solr makes the private copy.
-      effectiveConfigSet = name + AUTOCREATED_SUFFIX;
-      request = CollectionAdminRequest.createCollection(name, effectiveShards, effectiveRf);
-    } else {
-      effectiveConfigSet = configSet;
-      request =
-          CollectionAdminRequest.createCollection(name, configSet, effectiveShards, effectiveRf);
-    }
-    request.process(solrClient);
+    sharedConfigSet
+        .map(shared -> CollectionAdminRequest.createCollection(name, shared, shards, replicas))
+        // No collection.configName: Solr makes the private copy.
+        .orElseGet(() -> CollectionAdminRequest.createCollection(name, shards, replicas))
+        .process(solrClient);
 
+    String effectiveConfigSet = sharedConfigSet.orElse(name + AUTOCREATED_SUFFIX);
     return new CollectionCreationResult(
-        name, true, "Collection created successfully", effectiveConfigSet, Instant.now());
+        name, true, COLLECTION_CREATED_MESSAGE, effectiveConfigSet, Instant.now());
+  }
+
+  /**
+   * The configset to bind by reference, or empty when the collection should get a private copy of
+   * {@value #DEFAULT_CONFIGSET} (no configset given, or {@value #DEFAULT_CONFIGSET} itself).
+   */
+  private static Optional<String> sharedConfigSet(@Nullable String configSet) {
+    if (configSet == null || configSet.isBlank() || configSet.equals(DEFAULT_CONFIGSET)) {
+      return Optional.empty();
+    }
+    return Optional.of(configSet);
   }
 
   /**
@@ -1132,5 +1057,19 @@ public class CollectionService {
             name,
             name,
             name);
+  }
+
+  /**
+   * A {@link LukeRequest} for the {@code index} section only, which is all {@link
+   * #buildIndexStats(LukeResponse)} reads. Without {@code show=index} Solr also lists every field;
+   * SolrJ has no setter for it.
+   */
+  private static final class IndexOnlyLukeRequest extends LukeRequest {
+    @Override
+    public SolrParams getParams() {
+      ModifiableSolrParams params = new ModifiableSolrParams(super.getParams());
+      params.set(SHOW_PARAM, SHOW_INDEX_VALUE);
+      return params;
+    }
   }
 }
