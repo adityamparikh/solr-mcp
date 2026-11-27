@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.request.LukeRequest;
@@ -112,7 +113,7 @@ import tools.jackson.databind.json.JsonMapper;
  *
  * @see CollectionSchema
  * @see org.apache.solr.client.solrj.request.schema.SchemaRequest
- * @see org.springframework.ai.tool.annotation.Tool
+ * @see McpTool
  */
 @Service
 @Observed
@@ -138,7 +139,16 @@ public class SchemaService {
   private static final TypeReference<LinkedHashMap<String, FieldListing.IndexedField>>
       INDEXED_FIELDS = new TypeReference<>() {};
 
-  /** SolrJ client for communicating with Solr server */
+  private static final String NAME_KEY = "name";
+
+  // Analyzer keys of the Schema API add-field-type shape that SolrJ models as typed properties.
+  private static final String ANALYZER_KEY = "analyzer";
+  private static final String INDEX_ANALYZER_KEY = "indexAnalyzer";
+  private static final String QUERY_ANALYZER_KEY = "queryAnalyzer";
+  private static final String CHAR_FILTERS_KEY = "charFilters";
+  private static final String TOKENIZER_KEY = "tokenizer";
+  private static final String FILTERS_KEY = "filters";
+
   private final SolrClient solrClient;
 
   private final JsonMapper objectMapper;
@@ -181,7 +191,7 @@ public class SchemaService {
   public String getSchemaResource(String collection) {
     try {
       return objectMapper.writeValueAsString(getSchema(collection));
-    } catch (Exception e) {
+    } catch (SolrServerException | IOException | RuntimeException e) {
       // Deliberately no cause: MCP reports the root cause's message to the client,
       // and Solr and SolrJ failure text can carry internal host names, URLs and
       // paths. The log is the sole record of the cause.
@@ -238,12 +248,6 @@ public class SchemaService {
    * exception with details about the failure reason. Common issues include collection name typos,
    * permission problems, or Solr connectivity issues.
    *
-   * <p><strong>Performance Considerations:</strong>
-   *
-   * <p>Schema information is typically cached by Solr and retrieval is generally fast. However, for
-   * applications that frequently access schema information, consider implementing client-side
-   * caching to reduce network overhead.
-   *
    * @param collection the name of the Solr collection to retrieve schema information for
    * @return the schema as the Schema API reports it, every property Solr sends included
    * @throws SolrServerException if the Solr server returns an error; a missing collection surfaces
@@ -290,7 +294,7 @@ public class SchemaService {
   public String getFieldsResource(String collection) {
     try {
       return objectMapper.writeValueAsString(listFields(collection));
-    } catch (Exception e) {
+    } catch (SolrServerException | IOException | RuntimeException e) {
       // No cause, for the same reason as getSchemaResource: Solr failure text can
       // carry internal host names and URLs.
       logger.error("Failed to list fields for collection: {}", collection, e);
@@ -386,16 +390,7 @@ public class SchemaService {
       throws SolrServerException, IOException {
     requireCollection(collection);
     requireNonEmpty(fields, "fields");
-
-    List<String> names = new ArrayList<>(fields.size());
-    List<SchemaRequest.Update> updates = new ArrayList<>(fields.size());
-    for (Map<String, Object> field : fields) {
-      names.add(requireName(field, "field"));
-      updates.add(new SchemaRequest.AddField(field));
-    }
-
-    new SchemaRequest.MultiUpdate(updates).process(solrClient, collection);
-    return new SchemaUpdateResult(collection, names);
+    return applySchemaUpdates(collection, fields, "field", SchemaRequest.AddField::new);
   }
 
   /**
@@ -433,14 +428,35 @@ public class SchemaService {
       throws SolrServerException, IOException {
     requireCollection(collection);
     requireNonEmpty(fieldTypes, "fieldTypes");
+    return applySchemaUpdates(
+        collection,
+        fieldTypes,
+        "field type",
+        fieldType -> new SchemaRequest.AddFieldType(toFieldTypeDefinition(fieldType)));
+  }
 
-    List<String> names = new ArrayList<>(fieldTypes.size());
-    List<SchemaRequest.Update> updates = new ArrayList<>(fieldTypes.size());
-    for (Map<String, Object> fieldType : fieldTypes) {
-      names.add(requireName(fieldType, "field type"));
-      updates.add(new SchemaRequest.AddFieldType(toFieldTypeDefinition(fieldType)));
+  /**
+   * Sends one update per definition as a single {@link SchemaRequest.MultiUpdate}, which Solr
+   * applies all-or-nothing.
+   *
+   * @param collection target collection
+   * @param definitions the caller-supplied definitions; each must have a {@code name}
+   * @param kind human-readable noun for error messages
+   * @param toUpdate builds the Schema API command for one definition
+   * @return the collection and the names of the definitions applied
+   */
+  private SchemaUpdateResult applySchemaUpdates(
+      String collection,
+      List<Map<String, Object>> definitions,
+      String kind,
+      Function<Map<String, Object>, SchemaRequest.Update> toUpdate)
+      throws SolrServerException, IOException {
+    List<String> names = new ArrayList<>(definitions.size());
+    List<SchemaRequest.Update> updates = new ArrayList<>(definitions.size());
+    for (Map<String, Object> definition : definitions) {
+      names.add(requireName(definition, kind));
+      updates.add(toUpdate.apply(definition));
     }
-
     new SchemaRequest.MultiUpdate(updates).process(solrClient, collection);
     return new SchemaUpdateResult(collection, names);
   }
@@ -457,12 +473,12 @@ public class SchemaService {
    * @return the validated name
    */
   private static String requireName(Map<String, Object> definition, String kind) {
-    Object name = definition.get("name");
-    if (!(name instanceof String s) || s.isBlank()) {
+    Object name = definition.get(NAME_KEY);
+    if (!(name instanceof String validName) || validName.isBlank()) {
       throw new IllegalArgumentException(
           "Each " + kind + " definition requires a non-empty string 'name'; got: " + name);
     }
-    return s;
+    return validName;
   }
 
   /**
@@ -472,22 +488,22 @@ public class SchemaService {
    * we can't deserialize the flat input directly via Jackson.
    */
   private FieldTypeDefinition toFieldTypeDefinition(Map<String, Object> input) {
-    FieldTypeDefinition def = new FieldTypeDefinition();
+    FieldTypeDefinition definition = new FieldTypeDefinition();
     Map<String, Object> attributes = new LinkedHashMap<>(input);
-    Object analyzer = attributes.remove("analyzer");
-    Object indexAnalyzer = attributes.remove("indexAnalyzer");
-    Object queryAnalyzer = attributes.remove("queryAnalyzer");
-    def.setAttributes(attributes);
+    Object analyzer = attributes.remove(ANALYZER_KEY);
+    Object indexAnalyzer = attributes.remove(INDEX_ANALYZER_KEY);
+    Object queryAnalyzer = attributes.remove(QUERY_ANALYZER_KEY);
+    definition.setAttributes(attributes);
     if (analyzer != null) {
-      def.setAnalyzer(toAnalyzerDefinition(analyzer));
+      definition.setAnalyzer(toAnalyzerDefinition(analyzer));
     }
     if (indexAnalyzer != null) {
-      def.setIndexAnalyzer(toAnalyzerDefinition(indexAnalyzer));
+      definition.setIndexAnalyzer(toAnalyzerDefinition(indexAnalyzer));
     }
     if (queryAnalyzer != null) {
-      def.setQueryAnalyzer(toAnalyzerDefinition(queryAnalyzer));
+      definition.setQueryAnalyzer(toAnalyzerDefinition(queryAnalyzer));
     }
-    return def;
+    return definition;
   }
 
   /**
@@ -508,38 +524,42 @@ public class SchemaService {
       // name string). Let Jackson try its default conversion.
       return objectMapper.convertValue(raw, AnalyzerDefinition.class);
     }
-    @SuppressWarnings("unchecked")
-    Map<String, Object> input = (Map<String, Object>) rawMap;
+    Map<String, Object> input = asMap(rawMap);
 
-    AnalyzerDefinition def = new AnalyzerDefinition();
+    AnalyzerDefinition definition = new AnalyzerDefinition();
     Map<String, Object> attributes = new LinkedHashMap<>(input);
 
-    Object charFilters = attributes.remove("charFilters");
-    Object tokenizer = attributes.remove("tokenizer");
-    Object filters = attributes.remove("filters");
+    Object charFilters = attributes.remove(CHAR_FILTERS_KEY);
+    Object tokenizer = attributes.remove(TOKENIZER_KEY);
+    Object filters = attributes.remove(FILTERS_KEY);
 
     // Anything left (class, luceneMatchVersion, positionIncrementGap, ...)
     // is an attribute and must be passed through; SolrJ emits these inside
     // the analyzer JSON alongside the typed sub-objects.
     if (!attributes.isEmpty()) {
-      def.setAttributes(attributes);
+      definition.setAttributes(attributes);
     }
     if (charFilters instanceof List<?> charFilterList) {
-      @SuppressWarnings("unchecked")
-      List<Map<String, Object>> typed = (List<Map<String, Object>>) charFilterList;
-      def.setCharFilters(typed);
+      definition.setCharFilters(asListOfMaps(charFilterList));
     }
     if (tokenizer instanceof Map<?, ?> tokenizerMap) {
-      @SuppressWarnings("unchecked")
-      Map<String, Object> typed = (Map<String, Object>) tokenizerMap;
-      def.setTokenizer(typed);
+      definition.setTokenizer(asMap(tokenizerMap));
     }
     if (filters instanceof List<?> filterList) {
-      @SuppressWarnings("unchecked")
-      List<Map<String, Object>> typed = (List<Map<String, Object>>) filterList;
-      def.setFilters(typed);
+      definition.setFilters(asListOfMaps(filterList));
     }
-    return def;
+    return definition;
+  }
+
+  /** The analyzer JSON is caller-supplied, so its element types are taken on trust. */
+  @SuppressWarnings("unchecked")
+  private static List<Map<String, Object>> asListOfMaps(List<?> list) {
+    return (List<Map<String, Object>>) list;
+  }
+
+  @SuppressWarnings("unchecked")
+  private static Map<String, Object> asMap(Map<?, ?> map) {
+    return (Map<String, Object>) map;
   }
 
   private static void requireCollection(String collection) {
