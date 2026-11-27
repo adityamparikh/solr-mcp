@@ -36,9 +36,12 @@ import org.junit.jupiter.api.condition.DisabledInNativeImage;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.json.JsonTest;
 import org.springframework.test.json.JsonContent;
 import tools.jackson.databind.json.JsonMapper;
 
+@JsonTest
 @ExtendWith(MockitoExtension.class)
 @DisabledInNativeImage
 class ClusterServiceTest {
@@ -50,15 +53,15 @@ class ClusterServiceTest {
   private static final String REPLICA_PATH =
       "$.collections.films.shards.shard1.replicas.core_node2";
 
-  private static final JsonMapper JSON_MAPPER = JsonMapper.shared();
-
   @Mock private SolrClient solrClient;
+
+  @Autowired private JsonMapper jsonMapper;
 
   private ClusterService clusterService;
 
   @BeforeEach
   void setUp() {
-    clusterService = new ClusterService(solrClient, JSON_MAPPER);
+    clusterService = new ClusterService(solrClient, jsonMapper);
   }
 
   @Test
@@ -76,7 +79,7 @@ class ClusterServiceTest {
     assertEquals(SOLR_URL, parsed.other().get("base_url"));
     assertEquals(List.of(NODE), status.liveNodes());
     assertEquals("x", status.other().get("futureSection"));
-    JsonContent json = new JsonContent(JSON_MAPPER.writeValueAsString(status));
+    JsonContent json = new JsonContent(jsonMapper.writeValueAsString(status));
     assertThat(json).extractingPath(REPLICA_PATH + ".leader").isEqualTo(true);
     assertThat(json)
         .extractingPath("$.collections.films.router")
