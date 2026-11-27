@@ -43,7 +43,6 @@ import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
-import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
 /**
@@ -161,6 +160,11 @@ public class SearchService {
 
   private static final String EDISMAX = "edismax";
 
+  private static final String ALL_DOCUMENTS_QUERY = "*:*";
+
+  /** Facet values with no matching document are noise for an AI client. */
+  private static final int MIN_FACET_COUNT = 1;
+
   /**
    * Opens a local-params block. Under {@code defType=edismax} Solr searches such a prefix as
    * literal text instead of parsing it.
@@ -200,17 +204,16 @@ public class SearchService {
    */
   private static Map<String, Map<String, Long>> getFacets(QueryResponse queryResponse) {
     Map<String, Map<String, Long>> facets = new LinkedHashMap<>();
-    if (queryResponse.getFacetFields() != null && !queryResponse.getFacetFields().isEmpty()) {
-      queryResponse
-          .getFacetFields()
-          .forEach(
-              facetField -> {
-                Map<String, Long> facetValues = new LinkedHashMap<>();
-                for (FacetField.Count count : facetField.getValues()) {
-                  facetValues.put(count.getName(), count.getCount());
-                }
-                facets.put(facetField.getName(), facetValues);
-              });
+    List<FacetField> facetFields = queryResponse.getFacetFields();
+    if (facetFields == null) {
+      return facets;
+    }
+    for (FacetField facetField : facetFields) {
+      Map<String, Long> counts = new LinkedHashMap<>();
+      for (FacetField.Count count : facetField.getValues()) {
+        counts.put(count.getName(), count.getCount());
+      }
+      facets.put(facetField.getName(), counts);
     }
     return facets;
   }
@@ -332,85 +335,90 @@ public class SearchService {
           @Nullable List<String> queryFields)
       throws SolrServerException, IOException {
 
-    // query
-    final SolrQuery solrQuery = new SolrQuery("*:*");
+    SolrQuery solrQuery = new SolrQuery(ALL_DOCUMENTS_QUERY);
     // Facet counts are a NamedList that Solr writes as a flat ["term", 5, ...] array by
     // default; map style writes it as an object, which JsonResponseParser reads as a NamedList.
     solrQuery.set(JsonTextWriter.JSON_NL_STYLE, JsonTextWriter.JSON_NL_MAP);
     if (StringUtils.hasText(query)) {
       solrQuery.setQuery(query);
     }
-
-    // query fields — switch to eDisMax, which ignores local params in q
-    final List<String> nonBlankQueryFields = nonBlank(queryFields);
-    if (!nonBlankQueryFields.isEmpty()) {
-      if (query != null && query.startsWith(LOCAL_PARAMS_PREFIX)) {
-        throw new IllegalArgumentException(QUERY_FIELDS_WITH_LOCAL_PARAMS_ERROR);
-      }
-      solrQuery.set(DisMaxParams.QF, String.join(" ", nonBlankQueryFields));
-      solrQuery.set(DEF_TYPE, EDISMAX);
-    }
-
-    // fields — set before score, which setIncludeScore appends to the current fl
-    final List<String> nonBlankFields = nonBlank(fields);
-    if (!nonBlankFields.isEmpty()) {
-      solrQuery.setFields(nonBlankFields.toArray(String[]::new));
-    }
-
-    // fl=*,score unless fields narrowed it — Solr only returns maxScore and per-document score
-    // when asked
-    solrQuery.setIncludeScore(true);
-
-    // filter queries
-    if (!CollectionUtils.isEmpty(filterQueries)) {
-      filterQueries.stream().filter(StringUtils::hasText).forEach(solrQuery::addFilterQuery);
-    }
-
-    // facets
-    if (!CollectionUtils.isEmpty(facetFields)) {
-      facetFields.stream().filter(StringUtils::hasText).forEach(solrQuery::addFacetField);
-    }
-    // addFacetField sets facet=true; getFacetFields() is null until the first one
-    if (solrQuery.getFacetFields() != null) {
-      solrQuery.setFacetMinCount(1);
-      solrQuery.setFacetSort(FacetParams.FACET_SORT_COUNT);
-    }
-
-    // sorting
-    if (!CollectionUtils.isEmpty(sortClauses)) {
-      sortClauses.stream()
-          .filter(clause -> StringUtils.hasText(clause.field()))
-          .map(SortClause::toSolrSortClause)
-          .forEach(solrQuery::addSort);
-    }
-
-    // pagination
+    applyQueryFields(solrQuery, query, nonBlank(queryFields));
+    applyReturnedFields(solrQuery, nonBlank(fields));
+    nonBlank(filterQueries).forEach(solrQuery::addFilterQuery);
+    applyFacets(solrQuery, nonBlank(facetFields));
+    applySort(solrQuery, sortClauses);
     if (start != null) {
       solrQuery.setStart(start);
     }
-
     if (rows != null) {
       solrQuery.setRows(rows);
     }
+    return execute(collection, solrQuery);
+  }
 
+  /** Switches to eDisMax over {@code queryFields}; eDisMax would ignore local params in q. */
+  private static void applyQueryFields(
+      SolrQuery solrQuery, @Nullable String query, List<String> queryFields) {
+    if (queryFields.isEmpty()) {
+      return;
+    }
+    if (query != null && query.startsWith(LOCAL_PARAMS_PREFIX)) {
+      throw new IllegalArgumentException(QUERY_FIELDS_WITH_LOCAL_PARAMS_ERROR);
+    }
+    solrQuery.set(DisMaxParams.QF, String.join(" ", queryFields));
+    solrQuery.set(DEF_TYPE, EDISMAX);
+  }
+
+  /**
+   * Sets {@code fl} and always asks for the score: Solr only returns maxScore and per-document
+   * score when asked. The fields go first because setIncludeScore appends to the current fl, giving
+   * {@code fl=*,score} when no fields were requested.
+   */
+  private static void applyReturnedFields(SolrQuery solrQuery, List<String> fields) {
+    if (!fields.isEmpty()) {
+      solrQuery.setFields(fields.toArray(String[]::new));
+    }
+    solrQuery.setIncludeScore(true);
+  }
+
+  private static void applyFacets(SolrQuery solrQuery, List<String> facetFields) {
+    if (facetFields.isEmpty()) {
+      return;
+    }
+    facetFields.forEach(solrQuery::addFacetField);
+    solrQuery.setFacetMinCount(MIN_FACET_COUNT);
+    solrQuery.setFacetSort(FacetParams.FACET_SORT_COUNT);
+  }
+
+  private static void applySort(SolrQuery solrQuery, @Nullable List<SortClause> sortClauses) {
+    if (sortClauses == null) {
+      return;
+    }
+    sortClauses.stream()
+        .filter(clause -> StringUtils.hasText(clause.field()))
+        .map(SortClause::toSolrSortClause)
+        .forEach(solrQuery::addSort);
+  }
+
+  /**
+   * Runs the query and maps the response. Failures are rethrown without their cause: MCP reports
+   * the root cause's message to the client, which would replace the guidance given here, so the log
+   * is the sole record of the cause.
+   */
+  private SearchResponse execute(String collection, SolrQuery solrQuery)
+      throws SolrServerException, IOException {
     try {
-      final QueryResponse queryResponse = solrClient.query(collection, solrQuery);
-
-      // Add documents
-      final SolrDocumentList documents = queryResponse.getResults();
-
-      // Convert SolrDocuments to Maps
-      // SolrDocument is a Map in Solr's field order, so no per-document copy
-      final List<Map<String, Object>> docs = Collections.unmodifiableList(documents);
-
-      // Add facets if present
-      final var facets = getFacets(queryResponse);
-
+      QueryResponse queryResponse = solrClient.query(collection, solrQuery);
+      SolrDocumentList documents = queryResponse.getResults();
       logger.info(
           "Search on collection {} matched {} documents", collection, documents.getNumFound());
-
+      // SolrDocument is a Map in Solr's field order, so no per-document copy
       return new SearchResponse(
-          documents.getNumFound(), documents.getStart(), documents.getMaxScore(), docs, facets);
+          documents.getNumFound(),
+          documents.getStart(),
+          documents.getMaxScore(),
+          Collections.unmodifiableList(documents),
+          getFacets(queryResponse));
     } catch (SolrException e) {
       throw withRemediationHint(e, collection);
     } catch (SolrServerException e) {
@@ -420,7 +428,6 @@ public class SearchService {
       logger.warn("Solr query failed on collection {}", collection, e);
       throw new IOException(CONNECTION_ERROR);
     } catch (RuntimeException e) {
-      // The client only sees RESPONSE_ERROR; the log is the sole record of the cause.
       logger.warn("Solr query response failed on collection {}", collection, e);
       throw new IllegalStateException(RESPONSE_ERROR);
     }
@@ -450,8 +457,6 @@ public class SearchService {
    *     place of the guidance
    */
   private static RuntimeException withRemediationHint(SolrException e, String collection) {
-    final String message = String.valueOf(e.getMessage());
-
     // Deliberately no cause on the exceptions below: the MCP annotation layer
     // reports the ROOT cause's message as the tool error, so attaching the Solr
     // failure would discard the guidance and the client would never see it. This
@@ -467,26 +472,8 @@ public class SearchService {
           "Search failed: the collection was not found" + LIST_COLLECTIONS_HINT);
     }
 
-    // Everything below is a 400 carrying a generic SolrException, indistinguishable
-    // except by Solr's message text.
-    final String lower = message.toLowerCase(Locale.ROOT);
     if (e.code() == SolrException.ErrorCode.BAD_REQUEST.code) {
-      if (lower.contains(UNDEFINED_FIELD_TOKEN)
-          || lower.contains(SORT_FIELD_NOT_FOUND_TOKEN)
-          || lower.contains(INVALID_QUERY_FIELD_TOKEN)) {
-        return new IllegalArgumentException(
-            "Search failed: a referenced field is not defined"
-                + LIST_FIELDS_HINT_FORMAT.formatted(collection));
-      }
-      if (lower.contains(SYNTAX_ERROR_TOKEN) || lower.contains(CANNOT_PARSE_TOKEN)) {
-        return new IllegalArgumentException(
-            "Search failed: Solr could not parse the query or filters" + LUCENE_SYNTAX_HINT);
-      }
-      return new SolrException(
-          SolrException.ErrorCode.BAD_REQUEST,
-          "Search failed: Solr rejected the request. Check query syntax, query fields, filter queries,"
-              + " facet fields, sort clauses, and pagination; call list-fields to verify the field names, and facet and"
-              + " sort only on single-valued fields with D (docValues) in their schema flags.");
+      return badRequestHint(String.valueOf(e.getMessage()), collection);
     }
     if (e.code() == SolrException.ErrorCode.UNAUTHORIZED.code
         || e.code() == SolrException.ErrorCode.FORBIDDEN.code) {
@@ -499,6 +486,30 @@ public class SearchService {
         SolrException.ErrorCode.getErrorCode(e.code()),
         "Search failed: Solr could not complete the request. Retry later; if it persists,"
             + " ask the operator to check Solr health and server logs.");
+  }
+
+  /**
+   * A 400 carries a generic SolrException, so the failures are told apart only by Solr's message
+   * text.
+   */
+  private static RuntimeException badRequestHint(String solrMessage, String collection) {
+    String lower = solrMessage.toLowerCase(Locale.ROOT);
+    if (lower.contains(UNDEFINED_FIELD_TOKEN)
+        || lower.contains(SORT_FIELD_NOT_FOUND_TOKEN)
+        || lower.contains(INVALID_QUERY_FIELD_TOKEN)) {
+      return new IllegalArgumentException(
+          "Search failed: a referenced field is not defined"
+              + LIST_FIELDS_HINT_FORMAT.formatted(collection));
+    }
+    if (lower.contains(SYNTAX_ERROR_TOKEN) || lower.contains(CANNOT_PARSE_TOKEN)) {
+      return new IllegalArgumentException(
+          "Search failed: Solr could not parse the query or filters" + LUCENE_SYNTAX_HINT);
+    }
+    return new SolrException(
+        SolrException.ErrorCode.BAD_REQUEST,
+        "Search failed: Solr rejected the request. Check query syntax, query fields, filter queries,"
+            + " facet fields, sort clauses, and pagination; call list-fields to verify the field names, and facet and"
+            + " sort only on single-valued fields with D (docValues) in their schema flags.");
   }
 
   /**
