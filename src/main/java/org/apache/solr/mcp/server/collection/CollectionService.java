@@ -364,7 +364,9 @@ public class CollectionService {
           .sorted()
           .limit(MAX_COMPLETION_RESULTS)
           .toList();
-    } catch (SolrServerException | IOException _) {
+    } catch (SolrServerException | IOException e) {
+      // Completion is a best-effort hint: offer no suggestions rather than fail the request.
+      logger.debug("Collection name completion unavailable", e);
       return List.of();
     }
   }
